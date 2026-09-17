@@ -25,6 +25,8 @@ contains the answer.
 **Why this target:**
 <!-- e.g. "One of my questions is about a topic only two documents mention, so
      I expect that one to be hard." -->
+One of my questions asks about places that are good to visit with limited mobility, 
+and there are 3 listed under good, so the retriever may miss the expected chunk.
 
 ---
 
@@ -35,6 +37,8 @@ Every answer the system produces names at least one source document.
 **Why this target:**
 <!-- Why all five and not four? What about your setup makes that achievable —
      or what would have to go wrong for it not to be? -->
+Every RAG response should either be rejected as being out of scope, or have a relevant hit,
+so every answer should be able to return at least one source document.
 
 ---
 
@@ -44,14 +48,10 @@ When I ask a question my documents clearly don't cover, the relevance gate
 stops it and the system returns "I don't have enough information about that" —
 in at least 4 of 5 tries.
 
-<!-- The five questions are the ones in `OUT_OF_SCOPE` at the bottom of
-     `questions.py`, and `run_eval.py` puts them through the gate and writes
-     what happened into your run log. Swap them for your own if you'd rather —
-     just keep five of them, or the "4 of 5" above has nothing to be 4 of. -->
-
 **Why this target:**
 <!-- What did your distances look like when you set the cutoff in Milestone 4?
      Was there a clean gap, or did the two groups overlap? -->
+Not answerable until Milestone 4, but putting something here for Milestone 2.
 
 ---
 
@@ -68,12 +68,15 @@ in at least 4 of 5 tries.
           sentence cut in half at either end."
        - "No chunk is shorter than 200 characters, since anything below that
           in my corpus turned out to be a heading with no content under it." -->
-
-
+For all of the 5 test questions, every retrieved chunk includes context from 
+the document, specifically the source document's heading and all subheadings 
+prepended to the chunk text.
 
 **Why this target:**
 
-
+Without context, a chunk from an “Eat and drink” section doesn’t say which 
+town it belongs to. The chunker will add context to chunks algorithmically, 
+so every chunk should follow this format.
 
 ---
 
@@ -87,10 +90,16 @@ in at least 4 of 5 tries.
      present — anything, as long as it names a number or an observable
      outcome. -->
 
-
+For every test question, the source citations should include at least one 
+source that directly answers the question.
 
 **Why this target:**
 
+The questions are all answerable via a specific sentence in the document
+corpus, so if retrieval is working correctly, it should find the relevant chunk.
+Unlike criterion 1, this doesn't require hitting one specific chunk when multiple
+valid answers are possible, but instead at least one of them, which shouldn't
+be as difficult.
 
 
 ---
