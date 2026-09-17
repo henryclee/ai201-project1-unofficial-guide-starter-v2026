@@ -15,6 +15,13 @@ Henry Lee, Corpus: city_guides
 
      Milestone 5. -->
 
+I picked the city_guides corpus. The system answers questions a visitor might have about the
+places in the region — how to get around, what to see, where to eat and stay, when to visit, 
+and which places are accessible. A user can ask a question in plain language, the system retrieves 
+the relevant information from the guides, and it answers using only that information, citing its 
+source. If nothing in the corpus is relevant, it says it doesn't have enough information rather 
+than guessing.
+
 ## Chunking Strategy
 
 **Chunk size:**
@@ -127,7 +134,20 @@ had best distances from 0.808 to 0.982. The gap between the two groups is 0.207 
 
 **1.**
 
+I pasted my five acceptance criteria into AI web chat and asked it to describe how 
+it would test each one using only what the sentence says. It couldn't turn my initial 
+criterion 4 ("at least 4 of 5 sampled chunks have a coherent fact") into a test — 
+"coherent" wasn't measurable. I rewrote it as "every retrieved chunk is prefixed with 
+the source document's heading and subheadings," which is a format check. I kept the 
+criterion's intent but replaced the unmeasurable word.
+
 **2.**
+
+I asked Claude to write the split_documents function based on my description of the
+intended behavior. After a few rounds, it suggested prepending each chunk paragraph
+with the context from the heading and subheading by creating a helper function to parse
+each document first, and then creating the chunks from this. Claude then wrote the code
+and the tests, and I manually approved each change and test.
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
