@@ -155,8 +155,16 @@ and the tests, and I manually approved each change and test.
      ───────────────────────────────────────────────────────────────────────── -->
 ## Stretch features
 
+**1.**
 Metadata filtering - let people narrow results by source or date.
+City guides has not date data, so filter on source only (filename)
+Also include a way to see the valid sources to filter on.
 
+python app.py sources                list source documents in the current index
+
+--source on retrieve/ask narrows results to one exact source document
+example usage:
+python app.py ask "what's the best time of year to visit?" --source guide_seasons.md
 
 ---
 

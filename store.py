@@ -183,9 +183,13 @@ def search(
     top_k: int | None = None,
     corpus: str | None = None,
     variant: str = "default",
+    source: str | None = None,
 ) -> list[Result]:
     """
     Retrieve the chunks closest in meaning to a question.
+
+    `source`, when given, restricts results to chunks from that exact source
+    filename, using Chroma's metadata filter.
 
     Returns them nearest-first, each with its distance.
     """
@@ -202,6 +206,7 @@ def search(
     raw = collection.query(
         query_embeddings=embed([question]),
         n_results=min(top_k, collection.count()),
+        where={"source": source} if source else None,
     )
 
     results: list[Result] = []
@@ -218,6 +223,27 @@ def search(
             )
         )
     return results
+
+
+def list_sources(corpus: str | None = None, variant: str = "default") -> list[str]:
+    """The distinct source filenames present in an index, sorted.
+
+    Reads straight from the collection rather than the corpus folder, so it
+    stays accurate to whatever `--source` can actually filter on right now —
+    including a non-default `variant` — even if the corpus on disk has since
+    changed.
+    """
+    name = config.collection_name(corpus, variant)
+
+    try:
+        collection = _client().get_collection(name)
+    except Exception as exc:
+        raise RuntimeError(
+            f"No index called '{name}'. Run `python app.py index` first."
+        ) from exc
+
+    raw = collection.get(include=["metadatas"])
+    return sorted({str(meta.get("source", "unknown")) for meta in raw["metadatas"]})
 
 
 def index_exists(corpus: str | None = None, variant: str = "default") -> bool:

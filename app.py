@@ -8,9 +8,17 @@ The Unofficial Guide — command line.
     python app.py chunks                 print sample chunks      (Milestone 3)
     python app.py retrieve "question"    show distances, no answer (Milestone 4)
     python app.py corpora                list the available corpora
+    python app.py sources                list source documents in the current index
 
 Every command takes --corpus NAME to work with a different corpus without
 editing config.py.
+
+--source on retrieve/ask narrows results to one exact source document (see
+`python app.py sources` for the list) — implemented via Chroma's metadata
+filter, not a text search.
+
+example usage of source:
+python app.py ask "what's the best time of year to visit?" --source guide_seasons.md
 """
 
 import argparse
@@ -28,6 +36,15 @@ def cmd_corpora(args):
         print(f"{marker} {name}")
         print(f"    {blurb}\n")
     print("* = current default, set in config.py (AI201_CORPUS in .env wins)")
+
+
+def cmd_sources(args):
+    from store import list_sources
+
+    for source in list_sources(
+        corpus=args.corpus or config.CORPUS, variant=args.variant
+    ):
+        print(source)
 
 
 def cmd_index(args):
@@ -51,7 +68,7 @@ def cmd_index(args):
 
     elapsed = time.time() - started
     print(f"  stored   {count} chunks in {elapsed:.1f}s")
-    print(f"\nReady. Try: python app.py ask \"your question here\"")
+    print(f'\nReady. Try: python app.py ask "your question here"')
 
 
 def _chunks_from_doc(chunks, wanted):
@@ -87,7 +104,9 @@ def _chunks_at(chunks, spec):
     try:
         positions = [int(piece) for piece in spec.split(",") if piece.strip()]
     except ValueError:
-        raise SystemExit(f"--indices wants whole numbers separated by commas, not '{spec}'")
+        raise SystemExit(
+            f"--indices wants whole numbers separated by commas, not '{spec}'"
+        )
 
     picked = []
     for position in positions:
@@ -154,6 +173,7 @@ def cmd_retrieve(args):
         top_k=args.top_k or config.TOP_K,
         corpus=args.corpus or config.CORPUS,
         variant=args.variant,
+        source=args.source,
     )
 
     if not results:
@@ -181,6 +201,7 @@ def ask_pipeline(
     variant="default",
     top_k=None,
     threshold=None,
+    source=None,
     on_gate=None,
     on_prompt=None,
 ):
@@ -208,6 +229,7 @@ def ask_pipeline(
         top_k=top_k or config.TOP_K,
         corpus=corpus or config.CORPUS,
         variant=variant,
+        source=source,
     )
     decision = gate.check(results, threshold=threshold)
     if on_gate is not None:
@@ -242,6 +264,7 @@ def _ask_one(
     variant,
     top_k,
     threshold,
+    source=None,
     show_distances=True,
     show_prompt=False,
 ):
@@ -269,6 +292,7 @@ def _ask_one(
         variant=variant,
         top_k=top_k,
         threshold=threshold,
+        source=source,
         on_gate=print_distances if show_distances else None,
         on_prompt=print_prompt if show_prompt else None,
     )
@@ -294,6 +318,7 @@ def cmd_ask(args):
                 args.variant,
                 args.top_k,
                 args.threshold,
+                source=args.source,
                 show_prompt=args.show_prompt,
             )
         else:
@@ -312,6 +337,7 @@ def cmd_ask(args):
                     args.variant,
                     args.top_k,
                     args.threshold,
+                    source=args.source,
                     show_prompt=args.show_prompt,
                 )
     finally:
@@ -334,7 +360,13 @@ def build_parser():
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("corpora", help="list available corpora").set_defaults(func=cmd_corpora)
+    sub.add_parser("corpora", help="list available corpora").set_defaults(
+        func=cmd_corpora
+    )
+
+    sub.add_parser(
+        "sources", help="list source documents in the current index"
+    ).set_defaults(func=cmd_sources)
 
     p_index = sub.add_parser("index", help="build the search index")
     p_index.set_defaults(func=cmd_index)
@@ -360,12 +392,22 @@ def build_parser():
     p_ret = sub.add_parser("retrieve", help="show distances only (Milestone 4)")
     p_ret.add_argument("question")
     p_ret.add_argument("--top-k", type=int)
+    p_ret.add_argument(
+        "--source",
+        metavar="FILENAME",
+        help="only show results from this source document (see `python app.py sources`)",
+    )
     p_ret.set_defaults(func=cmd_retrieve)
 
     p_ask = sub.add_parser("ask", help="ask a question")
     p_ask.add_argument("question", nargs="?")
     p_ask.add_argument("--top-k", type=int)
     p_ask.add_argument("--threshold", type=float, help="override the gate cutoff")
+    p_ask.add_argument(
+        "--source",
+        metavar="FILENAME",
+        help="only use this source document (see `python app.py sources`)",
+    )
     p_ask.add_argument(
         "--show-prompt",
         action="store_true",
