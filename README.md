@@ -153,6 +153,10 @@ and the tests, and I manually approved each change and test.
      Doing one? Say so here BEFORE you start. A feature this README never
      claims earns nothing.
      ───────────────────────────────────────────────────────────────────────── -->
+## Stretch features
+
+Metadata filtering - let people narrow results by source or date.
+
 
 ---
 
