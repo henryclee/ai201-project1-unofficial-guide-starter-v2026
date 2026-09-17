@@ -80,24 +80,69 @@ def fallback_split(
     return chunks
 
 
+def _parse_sections(text: str) -> tuple[str, list[tuple[str, str]]]:
+    """
+    Split a document's Markdown into (h1_title, [(h2_heading, body), ...]).
+
+    If there's no H1, the title is "". If there's no H2 at all, the whole
+    document becomes a single section with an empty heading.
+    """
+    lines = text.split("\n")
+
+    h1_title = ""
+    start = 0
+    for i, line in enumerate(lines):
+        if line.startswith("# "):
+            h1_title = line[2:].strip()
+            start = i + 1
+            break
+
+    sections: list[tuple[str, str]] = []
+    current_heading = ""
+    current_lines: list[str] = []
+    for line in lines[start:]:
+        if line.startswith("## "):
+            sections.append((current_heading, "\n".join(current_lines)))
+            current_heading = line[3:].strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+    sections.append((current_heading, "\n".join(current_lines)))
+
+    # Drop a leading empty section (no content before the first "## ").
+    sections = [(h, b) for h, b in sections if b.strip() or h]
+
+    return h1_title, sections
+
+
 def split_documents(documents: list[Document]) -> list[Chunk]:
     """
-    Split documents into chunks. ⚠️ REPLACE THE BODY OF THIS IN MILESTONE 3.
+    Split each document by heading structure, then by paragraph.
 
-    Right now it just calls the fallback. That is the plain, generic behaviour
-    the brief is talking about.
-
-    When you write your own strategy, set `produced_by` to
-    "chunker.py::split_documents" so your README's Sample Chunks section names
-    the right function. `app.py chunks` prints that string for you.
-
-    Things worth thinking about before you write any code:
-      - Are your documents short posts or long guides?
-      - Is the useful information in one sentence, or spread over a paragraph?
-      - Would splitting on paragraph breaks keep more thoughts intact than
-        splitting on a character count?
+    Every chunk is one paragraph from one H2 subsection, prefixed with the
+    document's H1 title and that subsection's heading — so a chunk pulled out
+    of an "Eat and drink" section still says which town it's about.
     """
-    return fallback_split(documents)
+    chunks: list[Chunk] = []
+    for doc in documents:
+        h1_title, sections = _parse_sections(doc.text)
+        index = 0
+        for heading, body in sections:
+            paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
+            prefix = " — ".join(part for part in (h1_title, heading) if part)
+            for paragraph in paragraphs:
+                text = f"{prefix}\n\n{paragraph}" if prefix else paragraph
+                chunks.append(
+                    Chunk(
+                        text=text,
+                        source=doc.source,
+                        index=index,
+                        produced_by="chunker.py::split_documents",
+                    )
+                )
+                index += 1
+
+    return chunks
 
 
 def describe(chunks: list[Chunk]) -> str:

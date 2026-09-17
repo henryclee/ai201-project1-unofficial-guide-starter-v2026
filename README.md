@@ -18,7 +18,11 @@ Henry Lee, Corpus: city_guides
 ## Chunking Strategy
 
 **Chunk size:**
+Variable — one paragraph per chunk. No fixed character target. 
+On this corpus, 269 characters on average (shortest 120, longest 505).
+
 **Overlap:**
+None (0 characters).
 
 <!-- What about YOUR documents made you pick these numbers? Short posts and
      long sectioned guides don't want the same chunking, and "800 seemed
@@ -30,40 +34,55 @@ Henry Lee, Corpus: city_guides
 
      Milestone 3. -->
 
+After reading the documents in the city_guides corpus, I noticed that every document
+is clearly organized by heading / subheading (optional) / paragraph. Thus,
+my chunking strategy is to keep the heading/subheading context, and then have each paragraph
+as a chunk. Therefore, there is no fixed chunk size. Additionally, my chunker splits on paragraph
+boundaries, so no sentence is ever cut, and no overlap is needed.
+
 ## Sample Chunks
 
-<!-- Five chunks, pasted as text. Label each one and name the file it came from
-     AND the function that produced it — the grader checks your code against
-     what you claim here.
-
-     `python app.py chunks -n 5` prints all three for you. Copy them straight
-     across.
-
-     Milestone 3. -->
-
-**Chunk 1** — source: `` — produced by: ``
+**Chunk 1** — source: `guide_accessibility.md#0` — produced by: `chunker.py::split_documents`
 
 ```
+Getting around the region with limited mobility
+
+An honest assessment rather than a promotional one. Some of these places are
+difficult and it is better to know in advance.
 ```
 
-**Chunk 2** — source: `` — produced by: ``
+**Chunk 2** — source: `guide_corry_vale.md#4` — produced by: `chunker.py::split_documents`
 
 ```
+Corry Vale — What to see
+
+The valley itself is the attraction. The footpath network is dense and well marked, and a circuit taking in three of the four villages is about nine miles with 500 metres of ascent. The chapel in the second village is 12th century and always unlocked.
 ```
 
-**Chunk 3** — source: `` — produced by: ``
+**Chunk 3** — source: `guide_givens_mill.md#4` — produced by: `chunker.py::split_documents`
 
 ```
+Givens Mill — What to see
+
+The mill runs tours on the hour from 11 to 3 and the machinery is operating during them, which is loud and much more impressive than a static exhibit. The church has a Saxon doorway. The river walk downstream reaches Brightwater in about three hours.
 ```
 
-**Chunk 4** — source: `` — produced by: ``
+**Chunk 4** — source: `guide_marchwood.md#3` — produced by: `chunker.py::split_documents`
 
 ```
+Marchwood — Eat and drink
+
+The best eating is in the Northgate district, a 12-minute tram ride from the station, where about thirty restaurants sit within four streets. The area immediately around the station is uniformly poor and expensive. Marchwood keeps later hours than anywhere else in the region — kitchens serve until 10:30pm, and until midnight on Fridays and Saturdays.
 ```
 
-**Chunk 5** — source: `` — produced by: ``
+**Chunk 5** — source: `guide_seasons.md#2` — produced by: `chunker.py::split_documents`
 
 ```
+When to visit the region — Summer, June to August
+
+June is excellent everywhere. July and August split: Halden Bay becomes very
+busy and the parking problem dominates, Kestrelford fills with walkers, and
+Brightwater goes quiet to the point of dullness with the university empty.
 ```
 
 ## Sample Answer
