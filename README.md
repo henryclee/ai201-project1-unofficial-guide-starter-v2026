@@ -166,6 +166,13 @@ python app.py sources                list source documents in the current index
 example usage:
 python app.py ask "what's the best time of year to visit?" --source guide_seasons.md
 
+Claude was used to plan out the approach, including adding a way to see the sources, and
+then to implement the code change.
+
+**2.**
+Conversational memory — let the next question build on the last one.
+
+
 ---
 
 # Unit 2
