@@ -51,7 +51,11 @@ in at least 4 of 5 tries.
 **Why this target:**
 <!-- What did your distances look like when you set the cutoff in Milestone 4?
      Was there a clean gap, or did the two groups overlap? -->
-Not answerable until Milestone 4, but putting something here for Milestone 2.
+
+My in-corpus questions had best distances from 0.196 to 0.601. My out-of-scope questions 
+had best distances from 0.808 to 0.982. The gap between the two groups is 0.207 wide.
+With a larger set of test and out of scope questions, the gap might narrow or there might 
+be some overlap.
 
 ---
 

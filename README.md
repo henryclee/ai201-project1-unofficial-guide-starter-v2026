@@ -24,16 +24,6 @@ On this corpus, 269 characters on average (shortest 120, longest 505).
 **Overlap:**
 None (0 characters).
 
-<!-- What about YOUR documents made you pick these numbers? Short posts and
-     long sectioned guides don't want the same chunking, and "800 seemed
-     reasonable" earns nothing. Point at something you noticed when you read
-     the documents in Milestone 1.
-
-     If you changed your mind partway through, say so and say why. That's worth
-     more than pretending you got it right first time.
-
-     Milestone 3. -->
-
 After reading the documents in the city_guides corpus, I noticed that every document
 is clearly organized by heading / subheading (optional) / paragraph. Thus,
 my chunking strategy is to keep the heading/subheading context, and then have each paragraph
@@ -87,30 +77,42 @@ Brightwater goes quiet to the point of dullness with the university empty.
 
 ## Sample Answer
 
-<!-- One complete question and answer, pasted as text, with the source line
-     visible. Milestone 4. -->
-
 **Question:**
+Where can I go to eat at Givens Mill?
 
 **Answer:**
 
 ```
+At Givens Mill, you can eat at the tearoom attached to the mill or at the village's one pub (where food is served at lunchtimes and Thursday to Saturday evenings). 
+
+Source: `guide_givens_mill.md` (also mentioned in `guide_eating.md`)
+
+Sources retrieved: guide_eating.md, guide_givens_mill.md
 ```
 
 **My relevance cutoff:**
 
-<!-- The number you set in config.py, and how you got there.
-
-     You ran five questions your corpus covers and the five in OUT_OF_SCOPE
-     that it clearly doesn't, and wrote down the best distance for each. What
-     did those two groups look like? Where was the gap? Put the actual numbers
-     here — the table below wants all ten rows.
-
-     Milestone 4. -->
+I chose the cutoff at 0.65. On the test questions the worst best distance was 0.601,
+and on the out of scope questiosn the best best distance was 0.808. 0.65 is a conservative
+boundary for relevance, though 0.7 would also be reasonable. A larger set of test and out
+of scope questions might help determine a more precise boundary.
 
 | Question | In corpus? | Best distance |
-|---|---|---|
-|  |  |  |
+|----|---|-------|
+| 1  | y | 0.355 |
+| 2  | y | 0.316 |
+| 3  | y | 0.196 |
+| 4  | y | 0.468 |
+| 5  | y | 0.601 |
+| 6  | n | 0.808 |
+| 7  | n | 0.881 |
+| 8  | n | 0.982 |
+| 9  | n | 0.835 |
+| 10 | n | 0.859 |
+
+My in-corpus questions had best distances from 0.196 to 0.601. My out-of-scope questions
+had best distances from 0.808 to 0.982. The gap between the two groups is 0.207 wide.
+
 
 ## How I Used AI
 
