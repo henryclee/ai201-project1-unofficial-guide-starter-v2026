@@ -186,6 +186,46 @@ and implementing the change.
 **3.**
 A second embedding model — swap one in and write down what changed.
 
+I'm using BAAI/bge-large-en-v1.5 as my embedding model, which is a 1024 dimension model. 
+With this new embedder, rerunning the same questions as before, I get:
+
+| Question | In corpus? | Best distance |
+|----|---|-------|
+| 1  | y | 0.213 |
+| 2  | y | 0.235 |
+| 3  | y | 0.156 |
+| 4  | y | 0.291 |
+| 5  | y | 0.375 |
+| 6  | n | 0.584 |
+| 7  | n | 0.622 |
+| 8  | n | 0.667 |
+| 9  | n | 0.587 |
+| 10 | n | 0.555 |
+
+My in-corpus questions had best distances from 0.156 to 0.375. My out-of-scope questions
+had best distances from 0.555 to 0.667. The gap between the two groups is 0.180 wide.
+Interestingly, the cutoff changes from 0.65-0.70 to 0.40-0.50 with a new embedder, but
+the gap did not substantially change. 
+
+Another interesting artifact is that on the question "What are good places to visit with 
+limited mobility?" (test question 4), the RAG model fails to find the correct answer unless
+the top-k is increased from the default of 5 (which works with the default embedder). With
+a top-k of 6, if finds an answer (Brightwater, which is a correct answer, but not the 
+expected answer -- this is the difference between acceptance criteria 1 and 5). Only when
+top-k is increased to 9, does it give the expected answer (Thornton Wells).
+
+This suggests that, at least for these queries, the larger embedder actually performed 
+somewhat worse than the default embedder -- it did not increase the separation between in
+scope and out of scope questions, and it did not consistently embed the "best"
+chunks as nearest the query vector (requiring a larger top-k to find the "answer" chunk).
+
+PLEASE NOTE that I've commented OUT the new embedder in config.py for the submission, since 
+it would break the system on anyone else's machine (it points at a locally downloaded model), 
+and the sample runs are based on the default model.
+
+This stretch feature was primarily done manually, using Claude only to identify the relevant
+sections in code that needed to be adjusted to use the second embedder.
+
 ---
 
 # Unit 2

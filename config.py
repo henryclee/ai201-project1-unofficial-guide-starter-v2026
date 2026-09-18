@@ -63,7 +63,17 @@ HISTORY_TURNS = 3
 # stretch option — switches to loading that model from Hugging Face instead,
 # which needs `pip install 'sentence-transformers>=3.4,<3.5'` first. store.py
 # says so with a real error message rather than a stack trace if you forget.
+
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
+# For Stretch 3 - change the embedding model
+
+# This is commented out since it is pointing to a locally downloaded model, the
+# original huggingface model is "BAAI/bge-large-en-v1.5"
+
+# Also, the sample runs in readme.md are based on the default model
+
+# EMBEDDING_MODEL = "/Volumes/Data/embedding_models/bge-large-en-v1.5"
 MODEL = os.getenv("AI201_MODEL", "gemini-3.5-flash-lite")
 
 
