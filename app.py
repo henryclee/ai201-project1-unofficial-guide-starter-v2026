@@ -204,6 +204,8 @@ def ask_pipeline(
     source=None,
     on_gate=None,
     on_prompt=None,
+    on_condense=None,
+    history=None,
 ):
     """Retrieve, gate, answer. Returns the outcome and prints nothing.
 
@@ -219,13 +221,23 @@ def ask_pipeline(
     decision as soon as it's made, and `on_prompt` is handed the assembled
     prompt just before it goes out — that's how `--show-prompt` shows you the
     prompt while the model is still thinking rather than after.
+
+    `history`, when given, is the last few Q&A turns of a conversation. It's
+    used two ways: to condense this question into a standalone search query
+    before retrieval (so "what about in winter?" can still find the right
+    chunks), and to give the model the prior turns as context when answering.
+    `on_condense` is handed the rewritten query, when one was computed.
     """
     from store import search
     import gate
-    from generate import answer_from_chunks, build_prompt
+    from generate import answer_from_chunks, build_prompt, condense_query
+
+    search_query = condense_query(question, history) if history else question
+    if history and on_condense is not None:
+        on_condense(search_query)
 
     results = search(
-        question,
+        search_query,
         top_k=top_k or config.TOP_K,
         corpus=corpus or config.CORPUS,
         variant=variant,
@@ -248,12 +260,12 @@ def ask_pipeline(
         outcome["answer"] = gate.REFUSAL
         return outcome
 
-    prompt = build_prompt(question, results)
+    prompt = build_prompt(question, results, history)
     if on_prompt is not None:
         on_prompt(prompt)
 
     outcome["prompt"] = prompt
-    outcome["answer"] = answer_from_chunks(question, results)
+    outcome["answer"] = answer_from_chunks(question, results, history=history)
     outcome["sources"] = sorted({r.source for r in results})
     return outcome
 
@@ -267,6 +279,7 @@ def _ask_one(
     source=None,
     show_distances=True,
     show_prompt=False,
+    history=None,
 ):
     import gate
     from generate import GROUNDING_INSTRUCTION
@@ -274,6 +287,9 @@ def _ask_one(
     def print_distances(decision):
         best = f"{decision.best_distance:.3f}"
         print(f"  (best distance {best}, cutoff {decision.threshold})")
+
+    def print_condense(search_query):
+        print(f"\n[query rewritten for retrieval: {search_query!r}]")
 
     def print_prompt(prompt):
         print("\n" + "=" * 70)
@@ -295,6 +311,8 @@ def _ask_one(
         source=source,
         on_gate=print_distances if show_distances else None,
         on_prompt=print_prompt if show_prompt else None,
+        on_condense=print_condense if show_prompt else None,
+        history=history,
     )
 
     if outcome["refused"]:
@@ -322,6 +340,9 @@ def cmd_ask(args):
                 show_prompt=args.show_prompt,
             )
         else:
+            import gate
+
+            history = []
             print("Ask a question, or press Enter on an empty line to quit.\n")
             while True:
                 try:
@@ -331,7 +352,7 @@ def cmd_ask(args):
                     break
                 if not question:
                     break
-                _ask_one(
+                answer = _ask_one(
                     question,
                     corpus,
                     args.variant,
@@ -339,7 +360,11 @@ def cmd_ask(args):
                     args.threshold,
                     source=args.source,
                     show_prompt=args.show_prompt,
+                    history=history,
                 )
+                if answer != gate.REFUSAL:
+                    history.append({"question": question, "answer": answer})
+                    history = history[-config.HISTORY_TURNS:]
     finally:
         print(gen.usage())
 

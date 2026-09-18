@@ -172,6 +172,16 @@ then to implement the code change.
 **2.**
 Conversational memory — let the next question build on the last one.
 
+Only the interactive ask loop (running python app.py ask with no question argument) 
+gets memory; a one-shot python app.py ask "..." remains stateless.
+
+Inside the interactive loop, the last 3 Q&A turns are kept (defined in config.py). 
+A follow-up question is first rewritten into a standalone search query with one extra 
+model call, while the prior turns are also handed to the model as context when answering.
+
+Claude was used to discuss design tradeoffs (e.g. whether to rewrite the
+retrieval query or just pass history to the answering prompt) before planning
+and implementing the change.
 
 ---
 

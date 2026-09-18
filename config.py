@@ -46,6 +46,12 @@ TOP_K = 5  # how many chunks to pull back per question
 THRESHOLD = 0.65
 
 
+# ─── Conversational memory (stretch feature) ─────────────────────────────────
+# How many prior Q&A turns the interactive `ask` loop keeps as context for
+# query rewriting and the generation prompt. Older turns are dropped.
+HISTORY_TURNS = 3
+
+
 # ─── Models ──────────────────────────────────────────────────────────────────
 # Embeddings run on your own machine and cost no API quota.
 # Only generation calls out to a service.

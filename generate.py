@@ -281,8 +281,36 @@ Rules:
 - Name the document your answer came from, using the filename given in each excerpt.
 - Be brief. Two or three sentences is usually enough."""
 
+CONDENSE_INSTRUCTION = (
+    "You rewrite follow-up questions into standalone search queries. "
+    "Reply with only the query text, nothing else."
+)
 
-def build_prompt(question: str, results) -> str:
+
+def condense_query(question: str, history: list[dict], cache: bool = True) -> str:
+    """
+    Rewrite a follow-up question into a standalone search query.
+
+    Retrieval only ever sees one string with no memory of what came before,
+    so a follow-up like "what about in winter?" needs the prior turns folded
+    in before it can find the right chunks. Skipped entirely on the first
+    turn — no history means nothing to condense, and no reason to spend a
+    call on it.
+    """
+    if not history:
+        return question
+
+    turns = "\n".join(f"Q: {h['question']}\nA: {h['answer']}" for h in history)
+    prompt = (
+        f"Conversation so far:\n{turns}\n\n"
+        f"Follow-up question: {question}\n\n"
+        f"Standalone search query:"
+    )
+    rewritten = generate(prompt, system=CONDENSE_INSTRUCTION, cache=cache).strip()
+    return rewritten or question
+
+
+def build_prompt(question: str, results, history: list[dict] | None = None) -> str:
     """
     Assemble the grounded prompt out of retrieved chunks.
 
@@ -294,14 +322,20 @@ def build_prompt(question: str, results) -> str:
     context = "\n\n".join(
         f"[from {r.source}]\n{r.text}" for r in results
     )
+    history_block = ""
+    if history:
+        turns = "\n".join(f"Q: {h['question']}\nA: {h['answer']}" for h in history)
+        history_block = f"Conversation so far:\n{turns}\n\n"
     return (
-        f"Documents:\n\n{context}\n\n"
+        f"{history_block}Documents:\n\n{context}\n\n"
         f"---\n\nQuestion: {question}\n\n"
         f"Answer using only the documents above, and name the file you used."
     )
 
 
-def answer_from_chunks(question: str, results, cache: bool = True) -> str:
+def answer_from_chunks(
+    question: str, results, history: list[dict] | None = None, cache: bool = True
+) -> str:
     """
     Build a grounded prompt out of retrieved chunks and send it.
 
@@ -309,5 +343,5 @@ def answer_from_chunks(question: str, results, cache: bool = True) -> str:
     first — it has already decided these chunks are close enough to be worth
     answering from.
     """
-    prompt = build_prompt(question, results)
+    prompt = build_prompt(question, results, history)
     return generate(prompt, system=GROUNDING_INSTRUCTION, cache=cache)
