@@ -183,6 +183,9 @@ Claude was used to discuss design tradeoffs (e.g. whether to rewrite the
 retrieval query or just pass history to the answering prompt) before planning
 and implementing the change.
 
+**3.**
+A second embedding model — swap one in and write down what changed.
+
 ---
 
 # Unit 2
