@@ -169,6 +169,37 @@ python app.py ask "what's the best time of year to visit?" --source guide_season
 Claude was used to plan out the approach, including adding a way to see the sources, and
 then to implement the code change.
 
+## Original ask
+
+python app.py ask "What is there to do at Givens Mills?"
+  (best distance 0.394, cutoff 0.65)
+
+Based on the provided documents, visitors can visit the working watermill that commercially grinds flour, take a mill tour, go to the tearoom attached to the mill, and visit the market and the riverside. (Source: `guide_givens_mill.md` and `guide_accessibility.md`)
+
+Sources retrieved: guide_accessibility.md, guide_givens_mill.md
+
+## With source flag - negative example
+
+python app.py ask "What is there to do at Givens Mills?" --source guide_seasons.md
+  (best distance 0.771, cutoff 0.65)
+
+I don't have enough information about that.
+
+0 model calls this session
+
+Because we've constrained the source to one that doesn't answer the question, the model no longer has access to any relevant documents.
+
+## With source flat - positive example
+
+python app.py ask "What is there to do at Givens Mills?" --source guide_givens_mill.md 
+  (best distance 0.394, cutoff 0.65)
+
+Based on the provided document, visitors can visit the working watermill that still grinds flour commercially, and eat at the tearoom attached to the mill or the village pub (guide_givens_mill.md).
+
+Sources retrieved: guide_givens_mill.md
+
+1 model calls this session, 504 tokens (460 in, 44 out)
+
 **2.**
 Conversational memory — let the next question build on the last one.
 
@@ -182,6 +213,28 @@ model call, while the prior turns are also handed to the model as context when a
 Claude was used to discuss design tradeoffs (e.g. whether to rewrite the
 retrieval query or just pass history to the answering prompt) before planning
 and implementing the change.
+
+## Sample two turn conversation
+
+python app.py ask
+Ask a question, or press Enter on an empty line to quit.
+
+> Where should I go to eat in Kestrelford?
+  (best distance 0.256, cutoff 0.65)
+
+In Kestrelford, you can eat at the four pubs, two cafés, or the bakery (though the bakery sells out by 11am). (Source: `guide_kestrelford.md`)
+
+Sources retrieved: guide_eating.md, guide_kestrelford.md
+
+> How do I get around there?
+  (best distance 0.268, cutoff 0.65)
+
+Everything in Kestrelford is within a ten-minute walk of the market square, as there is no local transport or bus service within the town itself (`guide_kestrelford.md` and `guide_accessibility.md`).
+
+Sources retrieved: guide_accessibility.md, guide_kestrelford.md
+
+The second question requires context from the first turn in order to be answered (that it's still referring to Kestrelford), 
+showing that the conversation has memory between turns.
 
 **3.**
 A second embedding model — swap one in and write down what changed.
@@ -204,15 +257,15 @@ With this new embedder, rerunning the same questions as before, I get:
 
 My in-corpus questions had best distances from 0.156 to 0.375. My out-of-scope questions
 had best distances from 0.555 to 0.667. The gap between the two groups is 0.180 wide.
-Interestingly, the cutoff changes from 0.65-0.70 to 0.40-0.50 with a new embedder, but
-the gap did not substantially change. 
+Interestingly, the cutoff changes from 0.65 to 0.40-0.50 with a new embedder, but
+the gap actually narrowed modestly instead of expanding. 
 
 Another interesting artifact is that on the question "What are good places to visit with 
 limited mobility?" (test question 4), the RAG model fails to find the correct answer unless
 the top-k is increased from the default of 5 (which works with the default embedder). With
-a top-k of 6, if finds an answer (Brightwater, which is a correct answer, but not the 
+a top-k of 6, it finds an answer (Brightwater, which is a correct answer, but not the 
 expected answer -- this is the difference between acceptance criteria 1 and 5). Only when
-top-k is increased to 9, does it give the expected answer (Thornton Wells).
+top-k is increased to 9, does it give the expected answer (Thornby Wells).
 
 This suggests that, at least for these queries, the larger embedder actually performed 
 somewhat worse than the default embedder -- it did not increase the separation between in

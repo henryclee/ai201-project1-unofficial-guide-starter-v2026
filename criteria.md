@@ -94,17 +94,20 @@ so every chunk should follow this format.
      present — anything, as long as it names a number or an observable
      outcome. -->
 
-For every test question, the source citations should include at least one 
-source that directly answers the question.
+For question 4 ("What are good places to visit with limited mobility?"), the answer 
+names all 3 towns the corpus lists under Straightforward: Thornby Wells, Marchwood, 
+and Brightwater.
 
 **Why this target:**
 
-The questions are all answerable via a specific sentence in the document
-corpus, so if retrieval is working correctly, it should find the relevant chunk.
-Unlike criterion 1, this doesn't require hitting one specific chunk when multiple
-valid answers are possible, but instead at least one of them, which shouldn't
-be as difficult.
+The guide_accessibility.md document sorts towns into Straightforward, Mixed, and 
+Difficult sections, with three towns listed under Straightforward. Question 4 is 
+phrased "what are good places…", which maps to the Straightforward section. An answer 
+that names only one, or that stops at Thornby Wells, is incomplete.
 
+I chose all 3 as the criterion because the question asks for places, plural, and 
+the corpus enumerates exactly 3 without qualification. The towns are named explicitly 
+so the check is against these three specifically, not any three.
 
 ---
 
