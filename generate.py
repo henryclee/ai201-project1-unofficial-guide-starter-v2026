@@ -251,12 +251,14 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
             message = str(exc).lower()
             rate_limited = (
                 "429" in message
-                or "resource" in message and "exhaust" in message
-                or "rate" in message and "limit" in message
+                or "resource" in message
+                and "exhaust" in message
+                or "rate" in message
+                and "limit" in message
             )
             if not rate_limited:
                 raise
-            backoff = 2 ** attempt
+            backoff = 2**attempt
             print(
                 f"  [rate limit] service pushed back. Retrying in {backoff}s "
                 f"(attempt {attempt + 1} of {config.MAX_RETRIES}).",
@@ -276,10 +278,14 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
 GROUNDING_INSTRUCTION = """You answer questions using only the documents provided to you.
 
 Rules:
+- Include every fact from the excerpts that directly answers the question. Do not omit relevant details.
+- Preserve all specific qualifiers that change the answer.
 - Use only the information in the documents below. Do not use anything you know from elsewhere.
 - If the documents don't cover the question, say you don't have enough information. Do not guess.
 - Name the document your answer came from, using the filename given in each excerpt.
-- Be brief. Two or three sentences is usually enough."""
+- Be concise but complete. Completeness is more important than brevity."""
+
+# - Be brief. Two or three sentences is usually enough."""
 
 CONDENSE_INSTRUCTION = (
     "You rewrite follow-up questions into standalone search queries. "
@@ -319,9 +325,7 @@ def build_prompt(question: str, results, history: list[dict] | None = None) -> s
     this returns. Reading it once is the fastest way to see that retrieval,
     not the model, decides what an answer can possibly be based on.
     """
-    context = "\n\n".join(
-        f"[from {r.source}]\n{r.text}" for r in results
-    )
+    context = "\n\n".join(f"[from {r.source}]\n{r.text}" for r in results)
     history_block = ""
     if history:
         turns = "\n".join(f"Q: {h['question']}\nA: {h['answer']}" for h in history)

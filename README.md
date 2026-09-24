@@ -491,25 +491,110 @@ incomplete. We need to also retrieve the other Accessibility/Straightforward chu
 
 ## The Improvement
 
+Fix for Question 3 generation failure.
+
 **What I changed:**
+
+I changed the grounding instruction that makes up the system prompt. I added 3 bullet points:
+
+- Include every fact from the excerpts that directly answers the question. Do not omit relevant details.
+- Preserve all specific qualifiers that change the answer.
+- Be concise but complete. Completeness is more important than brevity.
+
+and I removed:
+
+- Be brief. Two or three sentences is usually enough.
 
 **Why I picked it:**
 
 <!-- Connect it to a specific diagnosis above in one sentence. If you can't,
      you picked a fix because it sounded impressive. -->
 
+Question 3 was getting the correct chunk, but was not providing all of the necessary information (every 15 minute AND until
+midnight). So we needed to adjust the prompt for the LLM to include this relevant information.
+
 ### Run Log — After
 
 <!-- Same format, same five criteria, three runs each.
      `python run_eval.py --label after` -->
 
+From run log:
+
+| Question | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Where can I go to eat at Givens Mill? | pass | pass | pass |
+| How expensive is it to stay at Thornby Wells? | pass | pass | pass |
+| What is the tram schedule in Marchwood on the weekend? | pass | pass | pass |
+| What are good places to visit with limited mobility? | pass | pass | pass |
+| Where can I go for bird watching? | pass | pass | pass |
+
+Criteria table:
+
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Retrieved chunks include context | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 5. Q4 names Thornby Wells, Marchwood, and Brightwater  | 3 of 3 | 1/3 | 1/3 | 1/3 | MISSED |
+
+### Where can I go to eat at Givens Mill? — run 1
+
+- Best distance: 0.3546 (passed the gate)
+- Sources retrieved: guide_eating.md, guide_givens_mill.md
+
+```
+Based on the provided documents, at Givens Mill you can go to:
+
+* **A tearoom** attached to the mill, which sells bread made from the flour ground twenty metres away.
+* **One pub**, where food is served lunchtimes and Thursday to Saturday evenings.
+
+Source: `guide_givens_mill.md` (and also mentioned in `guide_eating.md` regarding the tearoom).
+```
+
+### How expensive is it to stay at Thornby Wells? — run 1
+
+- Best distance: 0.3158 (passed the gate)
+- Sources retrieved: guide_thornby_wells.md
+
+```
+Prices to stay at Thornby Wells are moderate and stable year-round.
+
+Source: guide_thornby_wells.md
+```
+
+### What is the tram schedule in Marchwood on the weekend? — run 1
+
+- Best distance: 0.2075 (passed the gate)
+- Sources retrieved: guide_accessibility.md, guide_eating.md, guide_marchwood.md
+
+```
+Based on the provided documents, the tram network in Marchwood runs every 15 minutes on weekends (until midnight).
+
+Source: guide_marchwood.md
+```
+
+### What are good places to visit with limited mobility? — run 1
+
+- Best distance: 0.4684 (passed the gate)
+- Sources retrieved: guide_accessibility.md, guide_walking.md
+
+```
+Based on the provided documents:
+
+* **Thornby Wells** is the region's most accessible town on foot (guide_walking.md) and the easiest town in the region for limited mobility. It is flat, compact, everything is within three minutes of everything else, parking is free for two hours anywhere in town, the station is central, and the pump room and gardens are level throughout (guide_accessibility.md). Additionally, Thornby Wells has flat, formal gardens and level streets (guide_walking.md).
+```
+
+### Where can I go for bird watching? — run 1
+
+- Best distance: 0.6006 (passed the gate)
+- Sources retrieved: guide_eating.md, guide_elder_ness.md, guide_kestrelford.md
+
+```
+Based on the provided documents, you can go for bird watching at:
+
+* **Elder Ness**, specifically during the spring migration (April to May) and autumn migration (September to October), which is the reason to come and what most visitors come for. You can visit the bird observatory, where day visitors are taken and the wardens are generous with their time. *(Source: guide_elder_ness.md)*
+```
 
 **Did it help?**
 
@@ -519,6 +604,9 @@ incomplete. We need to also retrieve the other Accessibility/Straightforward chu
      tell.
 
      Milestone 4. -->
+
+Adjusting the prompt resolved the failure in question 3 in 3/3 runs. Interestingly, it also improved
+the completeness of some of the other answers as well.
 
 ## What's Still Broken
 
