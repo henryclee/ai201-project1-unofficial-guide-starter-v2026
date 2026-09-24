@@ -280,6 +280,7 @@ GROUNDING_INSTRUCTION = """You answer questions using only the documents provide
 Rules:
 - Include every fact from the excerpts that directly answers the question. Do not omit relevant details.
 - Preserve all specific qualifiers that change the answer.
+- When one fact has multiple qualifiers (for example, a rate that differs by day, or a frequency stated together with an end time), state all of them together in the same sentence. Do not report only the first qualifier and drop the rest.
 - Use only the information in the documents below. Do not use anything you know from elsewhere.
 - If the documents don't cover the question, say you don't have enough information. Do not guess.
 - Name the document your answer came from, using the filename given in each excerpt.

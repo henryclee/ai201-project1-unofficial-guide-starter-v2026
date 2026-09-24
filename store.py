@@ -18,6 +18,7 @@ rest of the project if they were wrong:
 """
 
 import os
+import re
 import shutil
 from dataclasses import dataclass
 
@@ -28,6 +29,7 @@ from dataclasses import dataclass
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 
 import chromadb  # noqa: E402
+from rank_bm25 import BM25Okapi  # noqa: E402
 
 import config
 from chunker import Chunk
@@ -45,6 +47,7 @@ class Result:
 
 
 _model = None
+_reranker = None
 
 # The model Chroma bundles. Anything else in config.EMBEDDING_MODEL means
 # "fetch that one from Hugging Face instead" — see `_embedder`.
@@ -119,6 +122,79 @@ def _embedder():
     return _model
 
 
+def _cross_encoder():
+    """
+    Load the reranking model once and keep it.
+
+    Same escape-hatch shape as `_sentence_transformer`: this needs
+    `sentence-transformers` (and the PyTorch it drags in), which isn't part of
+    the default install for the same reasons the alt-embedding-model path
+    isn't. First call downloads the model.
+    """
+    global _reranker
+
+    if _reranker is not None:
+        return _reranker
+
+    try:
+        from sentence_transformers import CrossEncoder
+    except ImportError as exc:
+        raise RuntimeError(
+            f"Reranking needs a cross-encoder model ({config.RERANK_MODEL!r}), "
+            f"which isn't the model Chroma bundles, so it has to be downloaded "
+            f"from Hugging Face.\n"
+            f"Install the optional dependency first:\n"
+            f"    pip install 'sentence-transformers>=3.4,<3.5'"
+        ) from exc
+
+    _reranker = CrossEncoder(config.RERANK_MODEL)
+    return _reranker
+
+
+def _rerank(question: str, results: list["Result"]) -> list["Result"]:
+    """
+    Reorder retrieved chunks by how relevant a cross-encoder judges each one
+    to be to `question`, best first.
+
+    Unlike the bi-encoder (`embed`), which scores the question and a chunk
+    independently and compares the two vectors, a cross-encoder reads the pair
+    together — so it catches chunks that are genuinely relevant but don't share
+    much wording with the question, which is exactly where cosine similarity
+    ranks true positives unevenly (see config.RERANK_CANDIDATES).
+    """
+    if not results:
+        return results
+
+    scores = _cross_encoder().predict([(question, r.text) for r in results])
+    return [r for _, r in sorted(zip(scores, results), key=lambda pair: -pair[0])]
+
+
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _tokenize(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text.lower())
+
+
+def _fuse_rankings(*rankings: list[str], k: int = 60) -> dict[str, float]:
+    """
+    Reciprocal Rank Fusion: combine several best-first ranked-id lists into one
+    score per id, without needing the lists' scores to be on the same scale.
+
+    Cosine distance and a BM25 score aren't comparable numbers, so averaging
+    them directly would be meaningless — RRF sidesteps that by only using each
+    list's *rank order*. An id absent from a list simply gets no contribution
+    from it, so a chunk that only one method finds can still surface, which is
+    the point: BM25 catches the lexical match (the shared "limited mobility"
+    heading) that cosine similarity ranks too low to reach.
+    """
+    scores: dict[str, float] = {}
+    for ranking in rankings:
+        for rank, chunk_id in enumerate(ranking):
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
 def embed(texts: list[str]) -> list[list[float]]:
     """Turn text into vectors. Runs on your machine, costs no API quota."""
     vectors = _embedder().encode(texts, show_progress_bar=False)
@@ -191,7 +267,13 @@ def search(
     `source`, when given, restricts results to chunks from that exact source
     filename, using Chroma's metadata filter.
 
-    Returns them nearest-first, each with its distance.
+    Returns them nearest-first by relevance, each with its (bi-encoder cosine)
+    distance. Retrieval is hybrid: a bi-encoder ranking and a BM25 keyword
+    ranking are fused (see `_fuse_rankings`), the fused pool is reranked with a
+    cross-encoder (see `_rerank`), and the result is truncated to `top_k`. Pure
+    cosine similarity alone ranks some true positives too low to reach a small
+    top_k — see config.RERANK_CANDIDATES — and BM25 catches ones that share a
+    question's wording (e.g. a heading) even when their own body doesn't.
     """
     top_k = top_k or config.TOP_K
     name = config.collection_name(corpus, variant)
@@ -203,26 +285,50 @@ def search(
             f"No index called '{name}'. Run `python app.py index` first."
         ) from exc
 
+    # n_results=collection.count(): every chunk, ranked, with a real cosine
+    # distance for each one. Cheap at this corpus's scale, and it means BM25
+    # scores against the exact same candidate set instead of a separate fetch.
     raw = collection.query(
         query_embeddings=embed([question]),
-        n_results=min(top_k, collection.count()),
+        n_results=collection.count(),
         where={"source": source} if source else None,
     )
 
-    results: list[Result] = []
+    by_id: dict[str, Result] = {}
+    embedding_ranking: list[str] = []
+    texts_in_rank_order: list[str] = []
     for text, meta, distance in zip(
         raw["documents"][0], raw["metadatas"][0], raw["distances"][0]
     ):
-        results.append(
-            Result(
-                text=text,
-                source=str(meta.get("source", "unknown")),
-                label=f"{meta.get('source', 'unknown')}#{meta.get('index', 0)}",
-                distance=float(distance),
-                produced_by=str(meta.get("produced_by", "unknown")),
-            )
+        chunk_id = f"{meta.get('source', 'unknown')}#{meta.get('index', 0)}"
+        by_id[chunk_id] = Result(
+            text=text,
+            source=str(meta.get("source", "unknown")),
+            label=chunk_id,
+            distance=float(distance),
+            produced_by=str(meta.get("produced_by", "unknown")),
         )
-    return results
+        embedding_ranking.append(chunk_id)
+        texts_in_rank_order.append(text)
+
+    if not by_id:
+        return []
+
+    bm25 = BM25Okapi([_tokenize(t) for t in texts_in_rank_order])
+    bm25_scores = bm25.get_scores(_tokenize(question))
+    bm25_ranking = [
+        chunk_id
+        for chunk_id, _ in sorted(
+            zip(embedding_ranking, bm25_scores), key=lambda pair: -pair[1]
+        )
+    ]
+
+    fused = _fuse_rankings(embedding_ranking, bm25_ranking)
+    candidate_ids = sorted(fused, key=lambda cid: -fused[cid])
+    candidate_ids = candidate_ids[: min(config.RERANK_CANDIDATES, len(candidate_ids))]
+
+    candidates = [by_id[cid] for cid in candidate_ids]
+    return _rerank(question, candidates)[:top_k]
 
 
 def list_sources(corpus: str | None = None, variant: str = "default") -> list[str]:

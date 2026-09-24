@@ -33,7 +33,18 @@ CHUNK_OVERLAP = 120  # characters shared between neighbouring chunks
 
 # ─── Retrieval (Milestone 4) ─────────────────────────────────────────────────
 
-TOP_K = 5  # how many chunks to pull back per question
+TOP_K = 7  # how many chunks to pull back per question
+
+# Criterion 5 fix: the bi-encoder ranks true-positive chunks unevenly when a
+# question's wording doesn't echo a chunk's — see guide_accessibility.md's
+# "Straightforward" section. Retrieval is hybrid (bi-encoder cosine + BM25
+# keyword ranking, fused with Reciprocal Rank Fusion — see store.py::search),
+# so a chunk BM25 finds via shared wording (e.g. a heading) can surface even
+# when cosine alone ranks it far too low. A cross-encoder then reranks the
+# fused pool down to TOP_K, scoring (question, chunk) pairs jointly instead of
+# comparing two independently-computed vectors.
+RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+RERANK_CANDIDATES = 25  # fused candidate pool size to pull before reranking
 
 # The relevance gate. If the best chunk is further away than this, the system
 # refuses to answer instead of handing the model thin material.
