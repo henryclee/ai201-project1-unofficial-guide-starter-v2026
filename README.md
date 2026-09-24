@@ -511,31 +511,6 @@ incomplete. We need to also retrieve the other Accessibility/Straightforward chu
 | 4. | | | | | |
 | 5. | | | | | |
 
-| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
-|---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
-
-I checked the retrieved chunks for each answer manually, and checked that it included the chunk
-with the answer.
-
-| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
-
-I checked each of the (15) answers manually to confirm that they all included a source.
-
-| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
-
-All 5 of the out-of-corpus questions had a best distance higher than the cut-off, and were
-algorithmically refused by the gate.
-
-| 4. Retrieved chunks include context | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
-
-I checked the retrieved chunks for each answer manually, and verified that they all have the 
-correct format of Heading / [Subheading] / Paragraph. 
-
-| 5. Q4 names Thornby Wells, Marchwood, and Brightwater  | 3 of 3 | 1/3 | 1/3 | 1/3 | MISSED |
-
-Each of the answers for Q4 only included Thornby Wells, but not Marchwood or Brightwater.
-
 **Did it help?**
 
 <!-- Say plainly whether it did, and how you know. If it made things worse,
