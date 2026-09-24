@@ -21,6 +21,31 @@ Swap them for your own if you like. Keep five of them either way: criterion 3
 names a target of "4 of 5", and four of three is not a thing.
 """
 
+# Original questions:
+# QUESTIONS = [
+#     # {"question": "...", "expects": "..."},
+#     {"question": "Where can I go to eat at Givens Mill?", "expects": "tearoom"},
+#     {
+#         "question": "How expensive is it to stay at Thornby Wells?",
+#         "expects": "moderate",
+#     },
+#     {
+#         "question": "What is the tram schedule in Marchwood?",
+#         "expects": "every 8 minutes on weekdays and every 15 at weekends, until midnight",
+#     },
+#     {
+#         "question": "What are good places to visit with limited mobility?",
+#         "expects": "Thornby Wells is the easiest town in the region.",
+#     },
+#     {
+#         "question": "Where can I go for bird watching?",
+#         "expects": "The bird observatory takes day visitors",
+#     },
+# ]
+
+# Questions were adjusted to be mroe specific. Expects were changed to a list of keywords
+# that should be in the answer. This is to make the scoring more flexible and less dependent on exact phrasing.
+
 QUESTIONS = [
     # {"question": "...", "expects": "..."},
     {"question": "Where can I go to eat at Givens Mill?", "expects": ["tearoom"]},

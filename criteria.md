@@ -94,9 +94,14 @@ so every chunk should follow this format.
      present — anything, as long as it names a number or an observable
      outcome. -->
 
-For question 4 ("What are good places to visit with limited mobility?"), the answer 
+Original: For question 4 ("What are good places to visit with limited mobility?"), the answer 
+names all 3 towns the corpus lists under Straightforward: Thornby Wells, Marchwood, 
+and Brightwater.
+
+Revised: For question 4 ("What are good places to visit with limited mobility?"), the answer 
 names 3 of the 3 towns the corpus lists under Straightforward: Thornby Wells, Marchwood, 
 and Brightwater.
+Why: 3 of 3 is more clearly a metric that I can measure
 
 **Why this target:**
 
