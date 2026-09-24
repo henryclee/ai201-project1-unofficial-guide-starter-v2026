@@ -299,17 +299,76 @@ sections in code that needed to be adjusted to use the second embedder.
 
      Milestone 1. -->
 
+From run log:
+
+| Question | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Where can I go to eat at Givens Mill? | pass | pass | pass |
+| How expensive is it to stay at Thornby Wells? | pass | pass | pass |
+| What is the tram schedule in Marchwood on the weekend? | pass | fail | fail |
+| What are good places to visit with limited mobility? | pass | pass | pass |
+| Where can I go for bird watching? | fail | fail | fail |
+
+Criteria table:
+
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Retrieved chunks include context | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 5. Q4 names Thornby Wells, Marchwood, and Brightwater  | 3 of 3 | 1/3 | 1/3 | 1/3 | MISSED |
 
 <!-- Underneath, paste the REAL output for each criterion from one of your
      runs — the actual text your system produced, not a description of it.
      Name the file and function that produced it. -->
+
+### Where can I go to eat at Givens Mill? — run 1
+
+- Best distance: 0.3546 (passed the gate)
+- Sources retrieved: guide_eating.md, guide_givens_mill.md
+
+```
+At Givens Mill, you can eat at the tearoom attached to the mill or at the village pub, which serves food at lunchtimes and Thursday to Saturday evenings (source: `guide_givens_mill.md`).
+```
+
+### How expensive is it to stay at Thornby Wells? — run 1
+
+- Best distance: 0.3158 (passed the gate)
+- Sources retrieved: guide_thornby_wells.md
+
+```
+According to guide_thornby_wells.md, the prices for places to stay in Thornby Wells are moderate and remain stable year-round.
+```
+
+### What is the tram schedule in Marchwood on the weekend? — run 1
+
+- Best distance: 0.2075 (passed the gate)
+- Sources retrieved: guide_accessibility.md, guide_eating.md, guide_marchwood.md
+
+```
+Based on `guide_marchwood.md`, the tram network runs every 15 minutes at weekends until midnight.
+```
+
+### What are good places to visit with limited mobility? — run 1
+
+- Best distance: 0.4684 (passed the gate)
+- Sources retrieved: guide_accessibility.md, guide_walking.md
+
+```
+Based on the provided documents, **Thornby Wells** is described as the easiest town for getting around with limited mobility because it is flat, compact, level throughout, and everything is within three minutes of everything else (*guide_accessibility.md* and *guide_walking.md*).
+```
+
+### Where can I go for bird watching? — run 1
+
+- Best distance: 0.6006 (passed the gate)
+- Sources retrieved: guide_eating.md, guide_elder_ness.md, guide_kestrelford.md
+
+```
+You can go to Elder Ness for bird watching, particularly during the spring migration (April to May) and autumn migration (September to October). 
+
+Source: `guide_elder_ness.md`
+```
 
 ## Verdicts
 
@@ -329,6 +388,86 @@ sections in code that needed to be adjusted to use the second embedder.
 | 3 |  |  |  |
 | 4 |  |  |  |
 | 5 |  |  |  |
+
+---
+
+| # | Criterion | Verdict | How I decided |
+|---|---|---|---|
+| 1 | Retrieved chunk contains the answer | MET | I checked the retrieved chunks for each answer manually, and checked that it included the chunk with the answer. |
+| 2 | Every answer names a source | MET | I checked each of the (15) answers manually to confirm that they all included a source. |
+| 3 | Gate stops out-of-corpus questions | MET | All 5 of the out-of-corpus questions had a best distance higher than the cut-off, and were algorithmically refused by the gate. |
+| 4 | Retrieved chunks include context | MET | I checked the retrieved chunks for each answer manually, and verified that they all have the correct format of Heading / [Subheading] / Paragraph. |
+| 5 | Q4 names Thornby Wells, Marchwood, and Brightwater | MISSED | Each of the answers for Q4 only included Thornby Wells, but not Marchwood or Brightwater.
+
+Retrieved chunks artifact:
+
+Question: Where can I go to eat at Givens Mill?
+
+#   distance   source                           preview
+----------------------------------------------------------------------------------------------------
+1   0.3546     guide_givens_mill.md             Givens Mill — Eat and drink  A tearoom attached to t...
+2   0.4307     guide_givens_mill.md             Givens Mill — Where to stay  Nothing in the village ...
+3   0.4373     guide_eating.md                  Eating across the region — Local specifics  Halden B...
+4   0.4547     guide_givens_mill.md             Givens Mill  Givens Mill is a village of 700 built a...
+5   0.4656     guide_eating.md                  Eating across the region — Opening hours  Sunday eve...
+
+Gate: best distance 0.355 is under the 0.65 cutoff
+
+---
+
+Question: How expensive is it to stay at Thornby Wells?
+
+#   distance   source                           preview
+----------------------------------------------------------------------------------------------------
+1   0.3158     guide_thornby_wells.md           Thornby Wells — Where to stay  Two large hotels from...
+2   0.3806     guide_thornby_wells.md           Thornby Wells — Eat and drink  Better than a town th...
+3   0.3999     guide_thornby_wells.md           Thornby Wells — Getting around  Flat and compact — 1...
+4   0.4191     guide_thornby_wells.md           Thornby Wells  Thornby Wells was a spa town for abou...
+5   0.4327     guide_thornby_wells.md           Thornby Wells — Practical notes  Cash is still usefu...
+
+Gate: best distance 0.316 is under the 0.65 cutoff
+
+---
+
+Question: What is the tram schedule in Marchwood on the weekend?
+
+#   distance   source                           preview
+----------------------------------------------------------------------------------------------------
+1   0.2075     guide_marchwood.md               Marchwood — Getting around  A tram network of four l...
+2   0.2494     guide_accessibility.md           Getting around the region with limited mobility — St...
+3   0.3247     guide_marchwood.md               Marchwood — Eat and drink  The best eating is in the...
+4   0.4207     guide_eating.md                  Eating across the region — The pattern worth knowing...
+5   0.4367     guide_marchwood.md               Marchwood — When to go  Any time. This is the one pl...
+
+Gate: best distance 0.208 is under the 0.65 cutoff
+
+---
+
+Question: What are good places to visit with limited mobility?
+
+#   distance   source                           preview
+----------------------------------------------------------------------------------------------------
+1   0.4684     guide_walking.md                 Walking in the region — Easy, on good surfaces  **Th...
+2   0.4979     guide_accessibility.md           Getting around the region with limited mobility — Pr...
+3   0.5070     guide_accessibility.md           Getting around the region with limited mobility  An ...
+4   0.5074     guide_accessibility.md           Getting around the region with limited mobility — St...
+5   0.5947     guide_accessibility.md           Getting around the region with limited mobility — Di...
+
+Gate: best distance 0.468 is under the 0.65 cutoff
+
+---
+
+Question: Where can I go for bird watching?
+
+#   distance   source                           preview
+----------------------------------------------------------------------------------------------------
+1   0.6006     guide_elder_ness.md              Elder Ness — What to see  The bird observatory takes...
+2   0.6082     guide_elder_ness.md              Elder Ness — When to go  April to May and September ...
+3   0.6785     guide_kestrelford.md             Kestrelford — What to see  The market square on a Sa...
+4   0.6805     guide_eating.md                  Eating across the region — Opening hours  This catch...
+5   0.6923     guide_elder_ness.md              Elder Ness — Where to stay  The pub has four rooms a...
+
+Gate: best distance 0.601 is under the 0.65 cutoff
 
 ## Diagnoses
 
@@ -371,6 +510,31 @@ sections in code that needed to be adjusted to use the second embedder.
 | 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
 | 4. | | | | | |
 | 5. | | | | | |
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+I checked the retrieved chunks for each answer manually, and checked that it included the chunk
+with the answer.
+
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+I checked each of the (15) answers manually to confirm that they all included a source.
+
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+All 5 of the out-of-corpus questions had a best distance higher than the cut-off, and were
+algorithmically refused by the gate.
+
+| 4. Retrieved chunks include context | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+I checked the retrieved chunks for each answer manually, and verified that they all have the 
+correct format of Heading / [Subheading] / Paragraph. 
+
+| 5. Q4 names Thornby Wells, Marchwood, and Brightwater  | 3 of 3 | 1/3 | 1/3 | 1/3 | MISSED |
+
+Each of the answers for Q4 only included Thornby Wells, but not Marchwood or Brightwater.
 
 **Did it help?**
 
