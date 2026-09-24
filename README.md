@@ -149,6 +149,31 @@ with the context from the heading and subheading by creating a helper function t
 each document first, and then creating the chunks from this. Claude then wrote the code
 and the tests, and I manually approved each change and test.
 
+**3.**
+
+I asked Claude to help me refactor the prompt for Milestone 4 (failure of generation).
+
+**4.**
+
+I used Claude to plan, implement, test, and iterate over the stretch feature for Unit 2
+(fix the retrieval pipeline for criterion 5). It initially measured where each target chunk 
+ranked by cosine distance across the full 115-chunk corpus (Thornby Wells: 4th, Marchwood: 17th, 
+Brightwater: 35th), suggesting that increasing top-k alone wouldn't work.
+
+We then discussed the options, and opted for BM-25 hybrid retrieval followed by reranking
+using a cross-encoder.
+
+After running the eval, there was a regression in Q3, which Claude attributed to ordinary LLM 
+sampling variance. I suspected it was actually caused by the top_k increase itself, and asked 
+Claude to test that directly — a controlled comparison (5 trials at top_k=5 vs. top_k=7, same 
+top-ranked chunk) confirmed the omission rate rose from 3/5 to 1/5, which is what led to the 
+added grounding-instruction rule.
+
+**5.**
+
+Claude was helpful in helping me to draft much of the written text of this report, as well
+as to identify errors in my writing.
+
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
      claims earns nothing.
@@ -615,55 +640,20 @@ answer the question.
 
 **What I changed:**
 
-I diagnosed this by checking exactly where the bi-encoder (`all-MiniLM-L6-v2`) ranked each of the 3 target
-chunks out of the full 115-chunk corpus, by cosine distance alone: Thornby Wells at rank 4, Marchwood at rank
-17, and Brightwater at rank **35**. Even `top_k=25` — tried directly, before writing any code — did not
-retrieve all 3. Raising `top_k` further wasn't a real fix; it was masking a ranking problem, not solving it.
-Chunking wasn't the cause either — each town already has its own clean, single-paragraph chunk under the
-correct `## Straightforward` heading.
+I changed the retrieval from a simple bi-encoder, to a hybrid BM-25/bi-encoder with a subsequent reranker
+using a cross-encoder.
 
-I made three changes to `store.py::search`:
-
-1. **Hybrid retrieval.** Alongside the existing bi-encoder cosine ranking, I added a BM25 keyword ranking
-   (`rank_bm25`, already a pinned dependency) over the same chunks, and combined the two with Reciprocal Rank
-   Fusion (RRF) — a chunk's fused score only depends on its rank position in each list, so the two very
-   different scales (cosine distance vs. BM25 score) don't need to be normalized against each other. This is
-   what pulled Brightwater into the candidate pool at all: it shares the exact heading
-   ("Getting around the region with limited mobility — Straightforward") with the other two, which BM25
-   catches even though its body text ("level along the river", "step-free") doesn't echo the question's
-   wording the way Thornby Wells's ("is the easiest town") does.
-2. **Cross-encoder reranking.** The fused top-25 candidates are reranked with
-   `cross-encoder/ms-marco-MiniLM-L-6-v2`, which scores `(question, chunk)` jointly instead of comparing two
-   independently-computed vectors — a genuinely different signal from cosine similarity, not just "the same
-   ranking with more candidates."
-3. **`config.TOP_K` raised from 5 to 7.** After the two changes above, the 3 target chunks land at reranked
-   positions 3, 6, and 7 — tightly clustered near the top, rather than scattered across the whole corpus like
-   the raw cosine ranking. 7 is a defensible number, in that this criteria requires each of 3 chunks to be
-   included in the retrieval.
-
-Raising `TOP_K` had a side effect: it reintroduced the exact failure Milestone 4 had already fixed for
-Question 3 ("include every 15 minutes, and until midnight"), because more surrounding chunks made the small
-model more likely to drop the second half of a compound fact. This shows up directly in
-`results/run_2026-09-24_1528_after-hybrid-rerank.md` — hybrid retrieval and reranking alone (before the
-grounding-instruction fix below) pass Criterion 5 but fail Question 3 on 3/3 runs, despite the correct chunk 
-retrieved at rank 1 every time. Testing 5 runs at `top_k=5` vs. `top_k=7` with the identical top-ranked chunk 
-showed the omission rate go from 3/5 to 1/5 — so this was really being caused by chunk count, not anything about
-retrieval correctness. I added one more rule to `generate.py::GROUNDING_INSTRUCTION`:
-
-- When one fact has multiple qualifiers (for example, a rate that differs by day, or a frequency stated
-  together with an end time), state all of them together in the same sentence. Do not report only the first
-  qualifier and drop the rest.
-
-which brought that same test back to 6/6.
+Running the evaluation after this change caused a regression in Question 3, where it failed to include both the
+required details (every 15 minutes, until midnight) that constitute a correct answer. Therefore, I also needed
+to further adjust the prompt to correct this regression.
 
 **Why I picked it:**
 
-The diagnosis said retrieval was only finding the Thornby Wells chunk, not Marchwood or Brightwater — cosine
-similarity alone ranked those two too low to reach any reasonable `top_k` (17th and 35th of 115). Hybrid
-retrieval and reranking are the standard fix for exactly this failure mode: a lexical signal (BM25) catches
-what an embedding model's wording bias misses, and a cross-encoder judges relevance more precisely than
-comparing two independently-computed vectors. The grounding-instruction addition was a direct, verified
-response to a side effect this fix caused, not a separate change.
+The initial retrieval was only finding the Thornby Wells chunk, not Marchwood or Brightwater — the 
+bi-encoder alone ranked those two too low to reach any reasonable `top_k` (17th and 35th of 115). Hybrid retrieval 
+and reranking are the standard fix for this failure mode.
+
+The grounding-instruction addition was a direct response to a side effect this fix caused, not a separate change.
 
 ### Run Log — After
 
@@ -762,9 +752,19 @@ test in `generate.py`'s grounding instruction rather than by assumption.
 
      Milestone 5. -->
 
+All of the test questions, and all of the criteria now pass. However, the fixes were primarily empirical --
+for instance, increasing top-K to 7 (from 5) was tuned to the test question, and not a principled value. Future work would include
+additional testing with a larger set of questions to see whether top_k=7 generalizes.
+
 ## What I'd Do Differently
 
 <!-- Knowing what you know now — which of your five criteria would you write
      differently, and why?
 
      Milestone 5. -->
+Criterion 1's target(4/5 questions retrieve a chunk with an answer) was set looser than the system actually achieves. It should be
+tightened to 5/5.
+
+Criterion 3's target (4/5 gate refusals) was overly loose, and identifies a substantial failure case. If an out of context
+question is not refused at the gate, then we are relying on the llm to either identify this, or risk a hallucination. It should be
+5/5 gate refusals for this small question set.
