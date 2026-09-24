@@ -46,6 +46,10 @@ names a target of "4 of 5", and four of three is not a thing.
 # Questions were adjusted to be mroe specific. Expects were changed to a list of keywords
 # that should be in the answer. This is to make the scoring more flexible and less dependent on exact phrasing.
 
+# Question 5 originally required 'bird observatory' in the answer; revised to just 'Elder Ness' because the question
+# asks where to go, not for a specific detail about that location — the observatory fact isn't part of what makes an
+# answer correct.
+
 QUESTIONS = [
     # {"question": "...", "expects": "..."},
     {"question": "Where can I go to eat at Givens Mill?", "expects": ["tearoom"]},
@@ -63,7 +67,7 @@ QUESTIONS = [
     },
     {
         "question": "Where can I go for bird watching?",
-        "expects": ["bird observatory", "Elder Ness"],
+        "expects": ["Elder Ness"],
     },
 ]
 

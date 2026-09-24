@@ -305,9 +305,9 @@ From run log:
 |---|---|---|---|
 | Where can I go to eat at Givens Mill? | pass | pass | pass |
 | How expensive is it to stay at Thornby Wells? | pass | pass | pass |
-| What is the tram schedule in Marchwood on the weekend? | pass | fail | fail |
+| What is the tram schedule in Marchwood on the weekend? | fail | fail | fail |
 | What are good places to visit with limited mobility? | pass | pass | pass |
-| Where can I go for bird watching? | fail | fail | fail |
+| Where can I go for bird watching? | pass | pass | pass |
 
 Criteria table:
 
@@ -329,7 +329,7 @@ Criteria table:
 - Sources retrieved: guide_eating.md, guide_givens_mill.md
 
 ```
-At Givens Mill, you can eat at the tearoom attached to the mill or at the village pub, which serves food at lunchtimes and Thursday to Saturday evenings (source: `guide_givens_mill.md`).
+At Givens Mill, you can eat at the tearoom attached to the mill or at the village pub, which serves food at lunchtimes and from Thursday to Saturday evenings (source: `guide_givens_mill.md`).
 ```
 
 ### How expensive is it to stay at Thornby Wells? — run 1
@@ -338,7 +338,7 @@ At Givens Mill, you can eat at the tearoom attached to the mill or at the villag
 - Sources retrieved: guide_thornby_wells.md
 
 ```
-According to guide_thornby_wells.md, the prices for places to stay in Thornby Wells are moderate and remain stable year-round.
+Prices for places to stay in Thornby Wells are moderate and remain stable throughout the year (guide_thornby_wells.md).
 ```
 
 ### What is the tram schedule in Marchwood on the weekend? — run 1
@@ -347,7 +347,9 @@ According to guide_thornby_wells.md, the prices for places to stay in Thornby We
 - Sources retrieved: guide_accessibility.md, guide_eating.md, guide_marchwood.md
 
 ```
-Based on `guide_marchwood.md`, the tram network runs every 15 minutes at weekends until midnight.
+The tram network runs every 15 minutes at weekends. 
+
+Source: `guide_marchwood.md`
 ```
 
 ### What are good places to visit with limited mobility? — run 1
@@ -356,7 +358,9 @@ Based on `guide_marchwood.md`, the tram network runs every 15 minutes at weekend
 - Sources retrieved: guide_accessibility.md, guide_walking.md
 
 ```
-Based on the provided documents, **Thornby Wells** is described as the easiest town for getting around with limited mobility because it is flat, compact, level throughout, and everything is within three minutes of everything else (*guide_accessibility.md* and *guide_walking.md*).
+**Thornby Wells** is described as the easiest town in the region for those with limited mobility, as it is flat, compact, and the pump room and gardens are level throughout. 
+
+This information comes from `guide_accessibility.md` and `guide_walking.md`.
 ```
 
 ### Where can I go for bird watching? — run 1
@@ -365,9 +369,7 @@ Based on the provided documents, **Thornby Wells** is described as the easiest t
 - Sources retrieved: guide_eating.md, guide_elder_ness.md, guide_kestrelford.md
 
 ```
-You can go to Elder Ness for bird watching, particularly during the spring migration (April to May) and autumn migration (September to October). 
-
-Source: `guide_elder_ness.md`
+You can go to Elder Ness for bird watching, particularly during the spring and autumn migration seasons (April to May and September to October). This information comes from `guide_elder_ness.md`.
 ```
 
 ## Verdicts
@@ -380,16 +382,6 @@ Source: `guide_elder_ness.md`
      The target has to hold, not show up occasionally.
 
      Milestone 2. -->
-
-| # | Criterion | Verdict | How I decided |
-|---|---|---|---|
-| 1 |  |  |  |
-| 2 |  |  |  |
-| 3 |  |  |  |
-| 4 |  |  |  |
-| 5 |  |  |  |
-
----
 
 | # | Criterion | Verdict | How I decided |
 |---|---|---|---|
@@ -488,6 +480,14 @@ Gate: best distance 0.601 is under the 0.65 cutoff
      low, and which one you'd tighten and to what.
 
      Milestone 3. -->
+
+Question 3 failed 3/3 runs. The expectation was that it would include both every 15 minutes, and the fact that the
+tram stops running at midnight. This is a failure in generation, as the retrieved chunk includes this information, thus
+the generation is not sufficiently precise.
+
+Criterion 5 failed. This is a failure in retrieval, as the retrieved chunks only includes the chunk for Thornby Wells,
+and not for Marchwood and Brightwater. It is correct since Thornby Wells is easiest (hence it passes Q4), but it is
+incomplete. We need to also retrieve the other Accessibility/Straightforward chunks.
 
 ## The Improvement
 
