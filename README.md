@@ -608,6 +608,32 @@ Based on the provided documents, you can go for bird watching at:
 Adjusting the prompt resolved the failure in question 3 in 3/3 runs. Interestingly, it also improved
 the completeness of some of the other answers as well.
 
+## Stretch Feature Improvement
+
+Fix for Criterion 5 failure. This requires a change to retrieval, since all the relevant chunks aren't being found to fully
+answer the question.
+
+**What I changed:**
+
+**Why I picked it:**
+
+<!-- Connect it to a specific diagnosis above in one sentence. If you can't,
+     you picked a fix because it sounded impressive. -->
+
+### Run Log — After
+
+<!-- Same format, same five criteria, three runs each.
+     `python run_eval.py --label after` -->
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
+| 2. Every answer names a source | 5 of 5 |  |  |  |  |
+| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
+| 4. | | | | | |
+| 5. | | | | | |
+
+
 ## What's Still Broken
 
 <!-- For each criterion still missed after your fix: what you'd do about it,
