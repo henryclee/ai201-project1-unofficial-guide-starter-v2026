@@ -95,7 +95,7 @@ so every chunk should follow this format.
      outcome. -->
 
 For question 4 ("What are good places to visit with limited mobility?"), the answer 
-names all 3 towns the corpus lists under Straightforward: Thornby Wells, Marchwood, 
+names 3 of the 3 towns the corpus lists under Straightforward: Thornby Wells, Marchwood, 
 and Brightwater.
 
 **Why this target:**
@@ -105,7 +105,7 @@ Difficult sections, with three towns listed under Straightforward. Question 4 is
 phrased "what are good places…", which maps to the Straightforward section. An answer 
 that names only one, or that stops at Thornby Wells, is incomplete.
 
-I chose all 3 as the criterion because the question asks for places, plural, and 
+I chose 3 of 3 as the criterion because the question asks for places, plural, and 
 the corpus enumerates exactly 3 without qualification. The towns are named explicitly 
 so the check is against these three specifically, not any three.
 

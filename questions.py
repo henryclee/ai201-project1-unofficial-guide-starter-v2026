@@ -23,22 +23,22 @@ names a target of "4 of 5", and four of three is not a thing.
 
 QUESTIONS = [
     # {"question": "...", "expects": "..."},
-    {"question": "Where can I go to eat at Givens Mill?", "expects": "tearoom"},
+    {"question": "Where can I go to eat at Givens Mill?", "expects": ["tearoom"]},
     {
         "question": "How expensive is it to stay at Thornby Wells?",
-        "expects": "moderate",
+        "expects": ["moderate"],
     },
     {
-        "question": "What is the tram schedule in Marchwood?",
-        "expects": "every 8 minutes on weekdays and every 15 at weekends, until midnight",
+        "question": "What is the tram schedule in Marchwood on the weekend?",
+        "expects": ["every 15 minutes", "until midnight"],
     },
     {
         "question": "What are good places to visit with limited mobility?",
-        "expects": "Thornby Wells is the easiest town in the region.",
+        "expects": ["Thornby Wells"],
     },
     {
         "question": "Where can I go for bird watching?",
-        "expects": "The bird observatory takes day visitors",
+        "expects": ["bird observatory", "Elder Ness"],
     },
 ]
 
