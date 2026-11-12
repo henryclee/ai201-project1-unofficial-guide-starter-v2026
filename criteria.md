@@ -151,3 +151,141 @@ so the check is against these three specifically, not any three.
      The whole reason the originals stay visible is so someone can see what you
      said before you knew the answer.
      ───────────────────────────────────────────────────────────────────────── -->
+
+---
+
+# Unit 9 criteria — the capstone extension
+
+Unit 1's and unit 2's criteria above are untouched. These five are for unit 9's
+work: a hardening layer around the pipeline (classified failures, a timeout,
+a reranker fallback), the structured log, and the documented run path.
+
+Written in Milestone 4, **after** the extension was built and **before** any of
+these were tested. In fairness to the targets: I had already seen the Milestone 3
+cost runs (warm `/ask`: 88 ms retrieve, ~9 s model call) and one cold first
+request (~3.1 s). Criteria 3 and 5 are set at what a correct system should do,
+not at what I'd already measured.
+
+Every criterion is run **three times** with nothing changed in between, with
+`AI201_CACHE=0` so a model call is a real call, and a fresh `AI201_LOG_DIR` per
+trial. "Warm" means the server has already answered one request.
+
+---
+
+### 1. Injected failures come back classified, with nothing leaked  *(extension, bad path)*
+
+**Target:** 8 of 8 injected failures return the expected status and `error_kind`
+**and** a body that contains no `Traceback`, no provider text (`API key`,
+`INVALID_ARGUMENT`) and, for the model failures, no 200:
+
+| # | Injection (`tools/faults.py`) | Expected |
+|---|---|---|
+| 1–5 | `f1_bad_input`: `{}`, `{"question": 123}`, `{"question": ""}`, a 5,000-character question, a non-JSON body | 400 `bad_input` |
+| 6 | `f2_no_index`: `chroma_db/` moved aside | 503 `no_index`, message contains `python app.py index` |
+| 7 | `f3_invalid_key`: a bogus `GEMINI_API_KEY` | 502 `upstream` |
+| 8 | `f4_empty_response`: model returns no text | 502 `upstream`, never a 200 with `"answer": ""` |
+
+**Why this target:** all 8, not 7. Each of these was a 500 with a raw exception
+string (or an HTML traceback page for the `123` body, or a 200 with an empty
+answer for F4) before this unit, and the whole point of the extension is that no
+caller sees them. A deterministic check still gets three trials because the
+server is a fresh process each time and F3 depends on a live call to the
+provider. The cost of being wrong is a caller who can't tell an outage from their
+own bad input, or who is shown a provider's key error.
+
+**How it's checked:** `python tools/faults.py --fault f1_bad_input` (and f2, f3,
+f4); read status and `error_kind` from the printed body.
+
+**Fails if:** any case returns 500, 200, a missing `error_kind`, or a body that
+quotes the provider or a traceback.
+
+---
+
+### 2. A hung model call is abandoned within 35 seconds  *(extension, bad path)*
+
+**Target:** with the model call stubbed to sleep 120 s (`f5_hung_upstream`), the
+client gets a `504` with `error_kind: "model_timeout"` in **35 seconds or less**
+of client-side wall-clock, in every trial (3 of 3).
+
+**Why this target:** the bound is `GENERATION_TIMEOUT_S = 30` on **one model
+call**, and the request also pays a cold first retrieval of about 3 s, so 35 s is
+the timeout plus the cold overhead plus a little slack. Looser (say 60 s) would
+let a retry or a pacing sleep slip through unnoticed; tighter than 33 s would
+measure retrieval rather than the timeout. Without the bound, this request holds
+a connection for the stub's full 120 s.
+
+**How it's checked:** `python tools/faults.py --fault f5_hung_upstream`; the
+harness prints the client wall-clock and the status.
+
+**Fails if:** the status is anything but 504, the kind is anything but
+`model_timeout`, or the wall-clock is over 35 s (for example if the timeout
+thread is joined instead of abandoned).
+
+---
+
+### 3. Without the reranker, the system still answers  *(extension)*
+
+**Target:** with `sentence_transformers` unimportable (`f6_no_reranker`'s
+method), all 5 of `questions.py`'s test questions return a `200` whose body has
+`"degraded": {"rerank": "degraded"}`, a non-empty answer, a non-empty `sources`
+list, **and** an answer that names at least one of its source files. 5 of 5, in
+every trial.
+
+**Why this target:** 5 of 5 because the point of the fallback is that a clean
+install (which doesn't include `sentence-transformers`) stops failing every
+question; "most questions" would be the old failure at a lower rate. I'm not
+asking for answers as *good* as the reranked ones (the fused ranking surfaces
+different chunks, so I expect some to be worse) only that the flag is honest and
+every answer is grounded and attributed.
+
+**How it's checked:** start the server the way `f6_no_reranker` does (a stub
+`sentence_transformers.py` on `PYTHONPATH` that raises `ImportError`), `curl` each
+question from `questions.py::QUESTIONS`, read `degraded`, `answer` and `sources`.
+
+**Fails if:** any response is non-200, is not flagged degraded, is empty, has no
+sources, or never names a source file in the answer text. This last condition
+is the most likely way for it to fail, since it depends on the model.
+
+---
+
+### 4. Every `/ask` leaves exactly one complete log record  *(instrumentation)*
+
+**Target:** in one session of 12 requests (5 malformed bodies, 5 test questions,
+2 out-of-scope questions), the log gains **exactly 12 lines**, every line parses
+as JSON, and **12 of 12** records have non-null `ts`, `outcome`, `duration_ms`
+**and** `question` (the field that records what came in).
+
+**Why this target:** 12 of 12, not 11, because the log is the only way to
+diagnose a failure after the fact, and a failure that leaves a record with no
+input is a failure you can count but not reproduce. This is stricter than "a
+record exists" on purpose: the brief's minimum is *what came in, what came out,
+how long it took*, and malformed requests are exactly the ones whose input is
+least obvious.
+
+**How it's checked:** `AI201_LOG_DIR=logs/c4-tN ./run.sh`, send the 12 requests
+with `curl`, then `wc -l logs/c4-tN/runs.jsonl` and a one-line `python` loop that
+`json.loads` every line and tests the four fields for `None`.
+
+**Fails if:** the line count differs from 12 (a request that skipped the
+`finally`), a line doesn't parse, or any of the four fields is `null`.
+
+---
+
+### 5. The first request after start-up is not slow to retrieve  *(run path)*
+
+**Target:** after `./run.sh` prints `Serving…`, the **first** `POST /ask` has
+`stage_ms.retrieve` of **500 ms or less**, in 3 of 3 restarts, per trial (so 9
+restarts across the three trials). Measured with the reranker installed.
+
+**Why this target:** a warm retrieve is about 90 ms; 500 ms is five times that,
+so it leaves room for noise but rules out loading a model inside someone's first
+request. The cost of being wrong is the first impression of a freshly started
+service: the first user (and any health-check-then-ask automation) waits on a
+model load that nobody can see. I saw about 3.1 s on a cold first request during
+Milestone 2, so I expect this to be the criterion at most risk.
+
+**How it's checked:** restart `AI201_CACHE=0 ./run.sh`, wait for `Serving`, send
+one question from `questions.py` with `curl`, then read `stage_ms.retrieve` from
+the last line of the log (`tail -n 1 logs/runs.jsonl`).
+
+**Fails if:** any first request reports `retrieve` over 500 ms.
