@@ -1,0 +1,67 @@
+Unit 9: Capstone
+Total Points: 60pts + 5pts bonus
+
+Required Features
+4pts	Required evidence and a good-faith extension
+1	criteria.md exists and contains five numbered criteria for this unit.
+1	README.md contains the build sections (What This Extends, The Shape, Running It, Instrumentation, What It Costs) and How I Used AI, each with real content rather than a heading alone.
+1	RUNNING.md exists and describes a run path — a URL with the means of getting there, or a start command with the environment it needs.
+1	The repository shows at least eight new commits from this unit, extending an existing system rather than beginning a new one.
+6pts	Criteria name a target
+6	All five criteria name a target.
+5	Four criteria name a target.
+3	Three criteria name a target.
+2	Two criteria name a target.
+1	One criterion names a target.
+5pts	Criteria are testable by someone who didn't write them
+5	All five criteria describe an action a reader could perform and an outcome they could check, without asking the student what they meant.
+4	Four criteria are testable.
+2	Three criteria are testable.
+1	One or two criteria are testable.
+4pts	Criteria carry a reason
+4	All five criteria carry a reason, and at least three reference something specific about this system, its extension, or the cost of being wrong.
+3	All five carry reasons but fewer than three are specific.
+1	Three or four criteria carry reasons.
+3pts	The criteria are about the extension
+3	At least three criteria test the extension, the run path, or the instrumentation — the work done this unit.
+2	Two criteria test this unit's work.
+1	One criterion tests this unit's work.
+5pts	README describes the extension and how to run it
+1	What This Extends names which of the four systems and what is new.
+1	The Shape names A, B or C and states what was ruled out of scope. The out-of-scope sentence is required; the brief makes it a milestone deliverable.
+2	Running It and RUNNING.md together give a reader a path they could follow — a URL plus how it got there, or a start command plus the Python version, the dependencies, and any model files with their sizes. 1 Point if a path is described but a reader would be missing something they'd need.
+1	What It Costs gives a measured per-run number and how it was measured, plus the hundred-a-day arithmetic.
+3pts	The system runs somewhere observable
+1	Evidence the system ran outside the editor — a reachable URL and its platform, or a committed run record produced by the documented start command.
+1	Structured logging — at least ten entries pasted as text, each carrying named fields including a timestamp, what came in, what came out, and a duration.
+1	Failures are logged too. At least one entry records a run that errored, timed out, or was rejected. If nothing failed across the whole unit, a stated note that the failure path was tested and produced no entries earns this.
+5pts	The runs actually happened
+2	All five criteria appear in the run log with three trials each, in the required table format.
+2	Real output is pasted underneath for each criterion — actual log lines or responses, not descriptions — with the file and function named.
+1	The criteria were committed before the results, and both commits are identifiable from their messages. Commit criteria.md on its own with a message naming it, and do the same for your first commit carrying run output.
+6pts	The verdicts are right
+4	All five verdicts follow correctly from the run log and the stated target.
+2	Revision handled correctly. Award if the student revised no criteria, or revised only for a legitimate reason — the criterion could not be measured, or measured the wrong thing — with the original line left in place and the new one underneath with a reason.
+7pts	Every miss is diagnosed
+7	Every miss names a component and states the mechanism. "Three of ten runs came back over 5 seconds; all three matched more than twelve chunks, and my reranker scores every match serially before truncating — the cost scales with match count, not result count" is a mechanism. Award full credit if nothing was missed and the student instead identified which target was set too low and named a specific tighter target.
+4	Misses name a component but not the mechanism, or describe only the symptom.
+2	A cause is offered but is not tied to any part of the system.
+6pts	The improvement follows from the diagnosis and was measured
+2	The README names the change made and connects it to a specific failure identified in the diagnosis.
+2	The full criteria set was re-run after the change, three trials each, and both result sets appear in the same format so before and after can be compared directly.
+2	The student states whether the change helped and how they know, including what it cost elsewhere if anything did.
+6pts	Cost, and the call on what's left
+2	What It Costs carries the hundred-a-day arithmetic, shown rather than asserted, following from the measured per-run number.
+2	What's Still Broken addresses every criterion still missed — what the student would do, and why they stopped. "I ran out of time" counts where it's the truth.
+2	The student names one thing they'd do first given more time, and why that one rather than the others.
+Stretch Features
+Stretch items are all-or-nothing. An item earns its points only if you declared it in your README before you built it, it is present in the repository, and your README accounts for what it changed.
+
++2pts	A second measured improvement
+A second change drawn from the diagnosis, run and logged the way the first was: a third run log in the same table format, and a statement of whether it helped. An improvement that made things worse, honestly reported, earns this in full.
++1pt	A latency breakdown
+Where the time actually goes across the stages of one run, measured rather than estimated, with the numbers in the README and a sentence on which stage dominates.
++1pt	A load observation
+The system run at roughly ten times its normal rate, with a report on what changed — latency, error rate, cost, or nothing. "Nothing changed" is a valid finding and earns the points if the numbers are there.
++1pt	Both run paths
+The system deployed and documented as a local run, with a note on what differed between them — setup time, latency, cost, or behavior.

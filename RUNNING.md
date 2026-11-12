@@ -203,8 +203,14 @@ stays up instead of a command that exits.
 
 ```bash
 python serve.py                    # locally, on port 5000
-gunicorn serve:app                 # the way a host starts it
 ```
+
+There is one way to start it, and that is on purpose. `python serve.py` runs
+Flask's development server, which announces itself as one on startup — the
+honest weight for a single-user run on your own machine, and the only path any
+command in this file actually exercises. Putting the app behind a production
+server or a hosting provider is not part of this project, so there is no second
+start command here: a documented path nobody has run is worse than no path.
 
 | Thing | What it does |
 |---|---|
@@ -213,9 +219,9 @@ gunicorn serve:app                 # the way a host starts it
 | `PORT` | The port to listen on. Hosts set it for you; on your laptop it defaults to 5000 |
 | `AI201_DEBUG=1` | Flask's reloader and debugger. Local only — never set it on a deployed service |
 
-> The free hosting tier sleeps after about fifteen minutes with no traffic, so
-> the first request after a quiet spell waits roughly a minute for it to wake
-> up. That's the tier, not your code.
+> If you put it on a host anyway — not this project's path — the free tier
+> sleeps after about fifteen minutes with no traffic, so the first request
+> after a quiet spell waits roughly a minute. That's the tier, not your code.
 
 `serve.py` has **no logging and no timing in it on purpose** — building that is
 the unit 9 exercise, and it is easier to instrument something you wrote.

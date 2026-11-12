@@ -44,8 +44,3 @@ rank-bm25>=0.2.2,<0.3
 # Serves the pipeline over HTTP, so the same code can run as a web service
 # instead of a command that exits. That's serve.py.
 flask>=3.0,<3.2
-
-# Unit 9 only, and unused before then. The server Flask starts for you is a
-# development server and says so out loud; this is the one you actually deploy
-# behind. Installed now so unit 9 is a command, not a dependency problem.
-gunicorn>=23.0,<24.0

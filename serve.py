@@ -3,7 +3,6 @@
 The Unofficial Guide — the same pipeline, over HTTP.
 
     python serve.py                          run it locally on port 5000
-    gunicorn serve:app                       run it the way a host runs it
 
 Nothing new happens in this file. It is a wrapper: a request comes in, it
 hands the question to `app.py::ask_pipeline` — the exact function the command
