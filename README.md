@@ -773,7 +773,7 @@ question is not refused at the gate, then we are relying on the llm to either id
 
 *Unit 2's "What's Still Broken" above is kept as history; the current list is under `# Unit 9` → What's Still Broken.*
 
-# Unit 9
+# Unit 9 - CAPSTONE
 
 ## What This Extends
 
@@ -869,7 +869,20 @@ The model call is 99% of a warm request; everything this system does locally is 
 
 The prompt dominates: 7 retrieved chunks plus the grounding instruction are about 91% of the tokens. A refused question costs nothing in tokens (the gate answers before the model is called) and about 60 ms of local compute. About 99% of the wall-clock is the Gemini call; local retrieval, reranking and gating are under 0.1 s warm.
 
-**For 100 questions a day** (the dollar figure is added in Milestone 7, as arithmetic on a published rate): 718 prompt tokens × 100 = **71,800 in/day**; 68 output tokens × 100 = **6,800 out/day**.
+**For 100 questions a day.** The measured part is tokens. The money is arithmetic on a rate of $1.50 per 1M input tokens and $7.50 per 1M output tokens, for Gemini 3.8 Flash (effective 2027-01-01). My token counts were measured on `gemini-3.5-flash-lite` (the model the service actually calls), so this is a projection of what the same traffic would cost at that rate, and a different model will tokenize and answer slightly differently.
+
+```
+mean prompt tokens/run  ≈ 718   × 100 runs/day = 71,800 in/day
+mean output tokens/run  ≈ 68    × 100 runs/day =  6,800 out/day
+
+71,800 / 1,000,000 × $1.50 = $0.1077/day   (input)
+ 6,800 / 1,000,000 × $7.50 = $0.0510/day   (output)
+                              ───────
+                              $0.1587/day  ≈ $0.16/day
+× 30 days                   ≈ $4.76/month
+```
+
+Per run that is $0.0016 (718 × $1.50/1M + 68 × $7.50/1M); the input side is about two-thirds of it. Using the *largest* run I measured (803 in, 201 out) as a ceiling for every question gives $0.0027/run, $0.27/day. Two things pull the real number down: a question the gate refuses costs no tokens (it is answered before the model is called), and the response cache serves a repeated question for free. One thing pushes it up: a retry (`attempts` > 1 in the log) is a second paid call. Local compute (embedding, rerank, gate) is about 90 ms per question and has no line item.
 
 ## Run Log and Verdicts
 
@@ -991,8 +1004,31 @@ removes it on purpose. Raw per-trial output: `results/unit9-before-trial{1,2,3}.
 
 ## What's Still Broken
 
-_(filled in Milestone 7)_
+**Criterion 4 — still MISSED (8/12 complete; the same four records every trial).** Four malformed bodies (`{}`, `{"question": 123}`, `{"question": ""}`, non-JSON) are logged with `question: null`, because `serve.py::ask` only records the question once validation has passed. What I'd do: set the logged input from the raw body (`request.get_data(as_text=True)[:200]`) before validating, so a request with no usable question still records what the caller sent, then re-run criterion 4. Why I stopped: the brief allows one measured improvement per loop, and a second change in the same re-run would make the before/after unreadable. It's also the smallest fix on this list, a handful of lines.
+
+**Criterion 3 — met in the after run (5/5 ×3), but I don't trust it.** It was 4/5, 5/5, 4/5 before the fix, and both misses were the model service (a call that outran my 30 s timeout, and a `503 UNAVAILABLE` that `generate.py` doesn't retry because its retry list only matches rate-limit text), not the degraded-reranker path. Nothing I changed touches that code, so a clean run says the provider was steadier, not that this is solved. What I'd do: retry once on a 503/`UNAVAILABLE` in `generate.py`, and rewrite the criterion to test the degrade path with a stubbed model so provider weather can't decide it. Why I stopped: the retry changes latency, which would muddy this unit's one-fix comparison.
+
+**Limits I know about and didn't fix:**
+- *The timeout abandons work, it doesn't cancel it.* A timed-out model call keeps running on a background thread; the response is bounded, the work isn't. It also bounds one model call, not the request, so the worst case is roughly `GENERATION_TIMEOUT_S × attempts + backoff + pacing`, and an uncapped rate-limit sleep (`pacing_ms`) sits outside it. The documented run is single-user, so nobody queues behind a leaked thread.
+- *The 30 s timeout can fire on a legitimate slow answer.* I saw a trivial prompt take 32.9 s outside the pipeline, and one criterion 3 request hit the timeout for real. 30 s was a choice made before I had that distribution.
+- *Token counts are process-wide.* `tokens_in`/`tokens_out` are the difference of two process-global counters (`generate.token_counts()`), so they are only correct for one request at a time. The per-request flags (`degraded`, `attempts`, `pacing_ms`) are thread-local and fine.
+- *No load test, no queue, no backpressure.* Declined at scope (item 3); nothing here says how it behaves at ten times this rate.
+- *Warm-up delays readiness.* The server doesn't answer `/health` until the models have loaded (about 3.5 s); fine locally, wrong behind a host with a tight health check.
+- *`run_eval.py` still aborts a whole eval on one bad upstream.* Named in the plan, deliberately not fixed (scope item 4): changing it would move the instrument unit 1 and 2's numbers came from.
+- *Four planned faults were never built or run*: an unexpected exception (500 `internal`), a rate-limit retry that succeeds, body-level abuse beyond the five bodies tested, and a blocked log directory (checked once by hand: request still 200, one line on stderr). `internal` and the rate-limit-retry path therefore have no test behind them.
+- *Carried over from unit 2:* `TOP_K` was tuned to five questions and doesn't generalise; the corpus is fictional; there's no auth.
+
+**What I cut, and why.** Decided at plan review, before building, to keep the unit to one extension: faults F7–F10, the `RERANK_STRICT` and `EMPTY_RESPONSE_RETRIES` knobs, a cap on the pacing sleep, `metrics.py --tail`/`--kind`, dedicated `quota` (429) and `model_empty_response` kinds (folded into `upstream` with a `reason`), and the `answer_head`/`cache_hit`/`top_score` log fields. Nothing was cut under time pressure.
+
+**The one thing I'd do first:** fix criterion 4 (log the raw input). Every diagnosis in this unit was read out of `logs/runs.jsonl`, so the log is the instrument everything else depends on, and right now it loses the input on exactly the requests that are hardest to reproduce. It's the only criterion still missed, and it's the cheapest. After that, the criterion 3 retry and a rewritten criterion, because they are what would let me trust the degrade path.
+
+**If this were real and I had another unit:** I'd fix the log, then run the system at ten times its rate to find out what the single-user assumptions (thread-local flags with process-global counters, one abandoned timeout thread per failure, a dev server) actually cost, because that is the part this unit declared out of scope and could not measure. I'd also swap the fictional corpus for a real one, since the gate threshold and `TOP_K` were tuned on five questions.
 
 ## How I Used AI
 
-_(filled in Milestone 7)_
+**1.**
+As this is the capstone project for AI agentic engineering, I wanted to use AI as much as possible for this final project. I asked AI to review the project instructions and grading rubric, and to develop a detailed plan to implement the project, milestone by milestone. I reviewed the plan, asked questions, and went over several revisions to the plan before being satisfied. this plan then became the backbone of the project.
+
+
+**2.**
+I asked AI to implement each Milestone, one at a time. After each step, I reviewed the output, the changes to the code, and made manual changes as necessary before committing. In this way, I truly treated AI like a junior engineer, implementing the project plan. Nearly all of the code in this project is AI generated.
