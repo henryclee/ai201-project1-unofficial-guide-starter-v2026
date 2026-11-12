@@ -799,15 +799,77 @@ The brief requires the run path and the log in every shape, so the operational l
 
 ## Running It
 
-*Path B — local with logs: one documented start command, a committed run record, text only.* The retriever loads two local models (Chroma's ONNX embedder, about 80 MB, and a `sentence-transformers` cross-encoder that pulls in PyTorch, about 2 GB), which will not fit the 512 MB free hosting tier. The brief directs that case to Path B, which is worth the same as hosting. The start command, the Python version, dependencies and model downloads are in [RUNNING.md](RUNNING.md) (filled in Milestone 3). The service answers `POST /ask` as JSON text, driven with the `curl` examples in that file. Path A is out of scope by decision (scope item 2), and the interface is out of scope by declaration (scope item 5).
+*Path B — local with logs: one documented start command, a committed run record, text only.* The retriever loads two local models (Chroma's ONNX embedder, about 80 MB, and a `sentence-transformers` cross-encoder that pulls in PyTorch, about 2 GB), which will not fit the 512 MB free hosting tier. The brief directs that case to Path B, which is worth the same as hosting. The start command, the Python version, dependencies and model downloads are in [RUNNING.md](RUNNING.md). The service answers `POST /ask` as JSON text, driven with the `curl` examples in that file. Path A is out of scope by decision (scope item 2), and the interface is out of scope by declaration (scope item 5).
+
+**Run path, tested from a clean copy.** I copied the tree (without `.venv`, `chroma_db/`, `logs/`) to a fresh folder outside the project, built a venv from `requirements.txt` alone — so **without** `sentence-transformers`, deliberately — and followed `RUNNING.md` verbatim: `./run.sh` without a `.env` stops with `GEMINI_API_KEY is not set…`; with the key it printed the first-run index message, built 115 chunks in 4.1 s, and served; the doc's own `curl` examples then returned a grounded answer with `"degraded": {"rerank": "degraded"}` and a matching log record. Before this unit that clean install failed every question. Two honest caveats: nothing in the document turned out to be missing on this machine, but the ONNX embedder was already cached in `~/.cache/chroma`, so the ~80 MB first-run download was not exercised; and the copy used this repo's own `.env`. The environment (Python 3.12, pinned dependencies, the two models and their sizes) is in `RUNNING.md`.
 
 ## Instrumentation
 
-_(filled in Milestone 3)_
+Every `/ask` call — answered, refused or failed — appends exactly one JSON line to `logs/runs.jsonl`. It is written by `metrics.py::record`, called from the `finally` block of `serve.py::ask`, so a 400, a 5xx and a timeout leave a record just as a 200 does, and it never raises (a failed write prints one line to stderr instead of breaking the request). `python metrics.py --summary` answers questions about the log without new code.
+
+**What each record holds:** `ts` (ISO-8601 with timezone), `request_id` (also returned to the caller and in `X-Request-Id`), `server`/`pid`/`port` (which process answered, which is what shows this ran as the documented `flask-dev` server and not from an editor), `endpoint`, `question` (input, first 200 characters), `outcome` (`answered | refused | degraded_answered | error`), `error_kind`, `reason` (for `upstream`: `api_error | rate_limited | quota | empty_response`), `stage` (where a failure happened), `http_status`, `degraded` (reranker state), `duration_ms` (whole request), `stage_ms` (`retrieve`/`gate`/`generate`), `n_results`, `n_candidates`, `refused`, `answer_chars` (output summary, not the whole answer), `tokens_in`/`tokens_out`, `attempts`, `pacing_ms` (time the rate limiter made the request wait — nonzero means the latency is the limiter's), `detail` (raw exception text, log only), `model`.
+
+**Where the 22 records came from:** `AI201_CACHE=0 ./run.sh`, then `curl` against it — 2 out-of-scope questions (refused) and the 10 cost questions (see What It Costs) — followed by `python tools/faults.py --all` (F1–F6, 10 records, each fault on its own server process). Reranker mode: `ok` (sentence-transformers installed) for all except F6, which removes it deliberately.
+
+Eleven of the 22 records, verbatim (lines 1, 2, 3, 4, 13, 16, 18, 19, 20, 21, 22 of `logs/runs.jsonl`: two refusals, two answers, then six failures — two `bad_input`, `no_index`, `upstream`/`api_error` from an invalid key, `upstream`/`empty_response`, `model_timeout` — and one degraded answer):
+
+```json
+{"ts": "2026-11-12T08:46:05.127-05:00", "server": "flask-dev", "pid": 58339, "port": 5001, "request_id": "74333807", "endpoint": "/ask", "outcome": "refused", "error_kind": null, "http_status": 200, "degraded": {"rerank": "ok"}, "stage_ms": {"retrieve": 3112.3, "gate": 0.0}, "n_results": 7, "n_candidates": 25, "refused": true, "answer_chars": 43, "tokens_in": 0, "tokens_out": 0, "attempts": 0, "pacing_ms": 0.0, "question": "What is the capital of Mongolia?", "duration_ms": 3112.9, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:46:05.205-05:00", "server": "flask-dev", "pid": 58339, "port": 5001, "request_id": "613ef172", "endpoint": "/ask", "outcome": "refused", "error_kind": null, "http_status": 200, "degraded": {"rerank": "ok"}, "stage_ms": {"retrieve": 67.9, "gate": 0.0}, "n_results": 7, "n_candidates": 25, "refused": true, "answer_chars": 43, "tokens_in": 0, "tokens_out": 0, "attempts": 0, "pacing_ms": 0.0, "question": "Who won the 1994 World Cup?", "duration_ms": 68.0, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:46:11.136-05:00", "server": "flask-dev", "pid": 58339, "port": 5001, "request_id": "52f394d7", "endpoint": "/ask", "outcome": "answered", "error_kind": null, "http_status": 200, "degraded": {"rerank": "ok"}, "stage_ms": {"retrieve": 57.1, "gate": 0.0, "generate": 5863.7}, "n_results": 7, "n_candidates": 25, "refused": false, "answer_chars": 349, "tokens_in": 713, "tokens_out": 93, "attempts": 1, "pacing_ms": 0.0, "question": "Where can I go to eat at Givens Mill?", "duration_ms": 5920.9, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:46:19.281-05:00", "server": "flask-dev", "pid": 58339, "port": 5001, "request_id": "8ae8ac02", "endpoint": "/ask", "outcome": "answered", "error_kind": null, "http_status": 200, "degraded": {"rerank": "ok"}, "stage_ms": {"retrieve": 83.3, "gate": 0.0, "generate": 8049.2}, "n_results": 7, "n_candidates": 25, "refused": false, "answer_chars": 128, "tokens_in": 712, "tokens_out": 30, "attempts": 1, "pacing_ms": 0.0, "question": "How expensive is it to stay at Thornby Wells?", "duration_ms": 8132.7, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:47:49.586-05:00", "server": "flask-dev", "pid": 59441, "port": 59201, "request_id": "6ebd7825", "endpoint": "/ask", "outcome": "error", "error_kind": "bad_input", "reason": null, "stage": "bad_input", "http_status": 400, "detail": null, "stage_ms": null, "question": null, "duration_ms": 0.0, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:47:49.588-05:00", "server": "flask-dev", "pid": 59441, "port": 59201, "request_id": "db15ad46", "endpoint": "/ask", "outcome": "error", "error_kind": "bad_input", "reason": null, "stage": "bad_input", "http_status": 400, "detail": null, "stage_ms": null, "question": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "duration_ms": 0.0, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:47:50.480-05:00", "server": "flask-dev", "pid": 59442, "port": 59210, "request_id": "5263d13b", "endpoint": "/ask", "outcome": "error", "error_kind": "no_index", "reason": null, "stage": "retrieve", "http_status": 503, "detail": "InvalidCollectionException: Collection city_guides__default does not exist.", "stage_ms": {"retrieve": 1.2}, "question": "How expensive is it to stay at Thornby Wells?", "duration_ms": 1.6, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:47:54.836-05:00", "server": "flask-dev", "pid": 59461, "port": 59215, "request_id": "be4451f0", "endpoint": "/ask", "outcome": "error", "error_kind": "upstream", "reason": "api_error", "stage": "generate", "http_status": 502, "detail": "ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'g", "stage_ms": {"retrieve": 3094.8, "gate": 0.0, "generate": 385.8}, "question": "How expensive is it to stay at Thornby Wells?", "duration_ms": 3480.9, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:47:58.759-05:00", "server": "flask-dev", "pid": 59508, "port": 59223, "request_id": "47f48c87", "endpoint": "/ask", "outcome": "error", "error_kind": "upstream", "reason": "empty_response", "stage": "generate", "http_status": 502, "detail": "empty model response after 2 attempts", "stage_ms": {"retrieve": 3057.3, "gate": 0.0, "generate": 0.2}, "question": "How expensive is it to stay at Thornby Wells?", "duration_ms": 3057.9, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:48:32.675-05:00", "server": "flask-dev", "pid": 59550, "port": 59229, "request_id": "f0021d8f", "endpoint": "/ask", "outcome": "error", "error_kind": "model_timeout", "reason": null, "stage": "generate", "http_status": 504, "detail": "no response within 30s", "stage_ms": {"retrieve": 3041.5, "gate": 0.0, "generate": 30005.4}, "question": "How expensive is it to stay at Thornby Wells?", "duration_ms": 33047.3, "model": "gemini-3.5-flash-lite"}
+{"ts": "2026-11-12T08:48:37.622-05:00", "server": "flask-dev", "pid": 59868, "port": 59235, "request_id": "de4c701d", "endpoint": "/ask", "outcome": "degraded_answered", "error_kind": null, "http_status": 200, "degraded": {"rerank": "degraded"}, "stage_ms": {"retrieve": 487.9, "gate": 0.0, "generate": 3582.1}, "n_results": 7, "n_candidates": 25, "refused": false, "answer_chars": 130, "tokens_in": 677, "tokens_out": 31, "attempts": 1, "pacing_ms": 0.0, "question": "How expensive is it to stay at Thornby Wells?", "duration_ms": 4070.4, "model": "gemini-3.5-flash-lite"}
+```
+
+`python metrics.py --summary` over the full 22 records (the question it answers: *which stage do the failures come from, and where does the time go?*):
+
+```
+22 records
+outcome: answered=10, degraded_answered=1, error=9, refused=2
+error_kind: None=13, bad_input=5, model_timeout=1, no_index=1, upstream=2
+http_status: 200=13, 400=5, 502=2, 503=1, 504=1
+duration_ms (all):      mean 6253  median 4996  max 33047  (n=22)
+duration_ms (answered): mean 8617  median 8133  max 14081  (n=11)
+stage_ms.retrieve      mean 808  median 93  max 3112  (n=17)
+stage_ms.gate          mean 0  median 0  max 0  (n=16)
+stage_ms.generate      mean 8844  median 7863  max 30005  (n=14)
+failures by stage:error_kind: bad_input:bad_input=5, generate:model_timeout=1, generate:upstream=2, retrieve:no_index=1
+degraded rerank: 1/22
+tokens_in:  mean 714  median 713  max 803  (n=11)
+tokens_out: mean 64  median 46  max 201  (n=11)
+runs with pacing_ms > 0: 0  (those latencies include the rate limiter)
+```
+
+**Latency breakdown (declared stretch).** The 10 cost runs, warm server, cache off, `pacing_ms == 0` on every one — `stage_ms` per stage, from the log:
+
+| Stage | mean | median | max |
+|---|---|---|---|
+| retrieve (embed + BM25 + rerank) | 88 ms | 92 ms | 96 ms |
+| gate | 0.0 ms | 0.0 ms | 0.0 ms |
+| generate (the Gemini call) | 8,984 ms | 8,169 ms | 13,992 ms |
+| **whole request (`duration_ms`)** | **9,072 ms** | **8,258 ms** | **14,081 ms** |
+
+The model call is 99% of a warm request; everything this system does locally is under a tenth of a second. (A cold first request is slower: about 3.1 s of retrieval while the cross-encoder loads.)
 
 ## What It Costs
 
-_(filled in Milestone 3 and 7)_
+**Measured, not estimated.** One run is one `POST /ask` that reaches the model. I started the service with the response cache off (`AI201_CACHE=0 ./run.sh` — with it on, a repeated question reports 0 tokens and a rerun legitimately costs nothing), warmed it with two refused questions, then sent 10 different real questions over HTTP with the same `curl` loop printed in `RUNNING.md`: the five from `questions.py` plus five new `city_guides` probes that are measurement inputs, not criteria (each was screened first with `app.py retrieve`, which makes no model call, to confirm the gate passes it). Tokens are read back from the model's own responses (`generate.py::_record_tokens`) into each record's `tokens_in`/`tokens_out`; all 10 runs had `attempts == 1` and `pacing_ms == 0`, so the rate limiter is not in any number. Reranker mode: `ok`.
+
+| Per run (n = 10) | mean | median | min | max |
+|---|---|---|---|---|
+| prompt tokens (`tokens_in`) | **718** | 717 | 639 | 803 |
+| output tokens (`tokens_out`) | **68** | 46 | 30 | 201 |
+| wall-clock (`duration_ms`) | **9.07 s** | 8.26 s | 5.92 s | 14.08 s |
+
+The prompt dominates: 7 retrieved chunks plus the grounding instruction are about 91% of the tokens. A refused question costs nothing in tokens (the gate answers before the model is called) and about 60 ms of local compute. About 99% of the wall-clock is the Gemini call; local retrieval, reranking and gating are under 0.1 s warm.
+
+**For 100 questions a day** (the dollar figure is added in Milestone 7, as arithmetic on a published rate): 718 prompt tokens × 100 = **71,800 in/day**; 68 output tokens × 100 = **6,800 out/day**.
 
 ## Run Log and Verdicts
 

@@ -137,6 +137,8 @@ number — three passes would produce the same three answers.
 | `generate.py` | Writes the answer — **stage 5**. The only thing that calls out to a service |
 | `app.py` | The command line |
 | `serve.py` | The same pipeline behind HTTP, for when it has to run as a service — **unit 9** |
+| `run.sh` | The one start command: index if needed, then `serve.py` — **unit 9** |
+| `errors.py`, `metrics.py`, `tools/faults.py` | The error taxonomy, the structured log and its reader, the fault harness — **unit 9** |
 | `run_eval.py` | Runs your questions repeatedly and writes the run log |
 | `questions.py` | Your five test questions, and the five out-of-corpus ones the gate should refuse. **You fill in the first five** |
 | `criteria.md` | Your five acceptance criteria. **You fill this in** |
@@ -192,39 +194,171 @@ own machine alone.
 
 ---
 
-## Running it somewhere else — **unit 9**
+## Running it somewhere else — **unit 9** (Path B: local, with logs)
 
-Unit 1 doesn't need this. It's here because the file it describes ships in the
-starter, and finding out in unit 9 that it exists is worse than reading one
-table now.
+The service runs on your own machine, started by one command, and every request
+it answers leaves a structured record. It is **not** hosted: the retriever loads
+two local models, which will not fit a 512 MB free tier, so this project takes
+the brief's Path B. It is text only — JSON over two routes, driven with `curl`.
+There is no page, no `GET /`, and no production server.
 
-`serve.py` puts the same pipeline behind HTTP, so it can run as a service that
-stays up instead of a command that exits.
+### Start it
 
 ```bash
-python serve.py                    # locally, on port 5000
+./run.sh
 ```
 
-There is one way to start it, and that is on purpose. `python serve.py` runs
-Flask's development server, which announces itself as one on startup — the
-honest weight for a single-user run on your own machine, and the only path any
-command in this file actually exercises. Putting the app behind a production
-server or a hosting provider is not part of this project, so there is no second
-start command here: a documented path nobody has run is worse than no path.
+That activates `.venv`, checks that `GEMINI_API_KEY` is set, pins the corpus to
+`city_guides`, builds the index if there isn't one, and runs `python serve.py`
+(Flask's development server) on **http://localhost:5001**. There is one way to
+start it, on purpose.
 
-| Thing | What it does |
+**The first run looks like a hang and isn't.** With no index, `run.sh` prints
+`no index for city_guides — building it now` and then downloads the ~80 MB
+embedder before it embeds 115 chunks (about 5 s once the model is on disk). It
+prints `index built.` when it is done. The first *question* after start-up is
+also slow (about 3 s) because the cross-encoder loads on the first request;
+every later request is warm.
+
+Port 5001 rather than 5000 because macOS's AirPlay Receiver already listens on
+5000.
+
+### Ask it — worked examples
+
+In a second terminal:
+
+```bash
+curl -s localhost:5001/health
+```
+```json
+{"corpus":"city_guides","detail":"ready","index_ready":true,"log_path":"…/logs/runs.jsonl","reranker":"ok","status":"ok"}
+```
+
+```bash
+curl -s -X POST localhost:5001/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question": "How expensive is it to stay at Thornby Wells?"}'
+```
+```json
+{"answer":"Prices are moderate and stable year-round (guide_thornby_wells.md).","best_distance":0.3158,"corpus":"city_guides","degraded":{"rerank":"ok"},"question":"How expensive is it to stay at Thornby Wells?","refused":false,"request_id":"4ed6ef91","sources":["guide_accessibility.md","guide_thornby_wells.md"],"threshold":0.65}
+```
+
+Every response carries a `request_id` (also in the `X-Request-Id` header) that
+matches one line in the log. A question the corpus doesn't cover is a **200**
+with `"refused": true` — the gate working, not an error.
+
+### What a failure looks like
+
+A failure is classified: a status code, an `error_kind`, and the `request_id`.
+Never a traceback, never the provider's own text (that goes to the log).
+
+```json
+{"error":"The model did not answer in time. Try again.","error_kind":"model_timeout","message":"The model did not answer in time. Try again.","request_id":"266ae023"}
+```
+
+| Status | `error_kind` | When |
+|---|---|---|
+| 400 | `bad_input` | body isn't JSON, no `question`, `question` isn't a string, blank, or over 1000 characters |
+| 503 | `no_index` | no index for the corpus — the message says to run `python app.py index` |
+| 504 | `model_timeout` | one model call took longer than `GENERATION_TIMEOUT_S` (30 s) |
+| 502 | `upstream` | the provider failed, rate limits were exhausted, the session budget was hit, or the model returned nothing (the log's `reason` says which) |
+| 500 | `internal` | anything unanticipated — `request_id` only, no exception text |
+
+The timeout bounds **one model call**, not the whole request: a pacing sleep
+(`REQUESTS_PER_MINUTE`) or a retry happens outside it, so the worst case is
+roughly `GENERATION_TIMEOUT_S × attempts + backoff + pacing`. A call that times
+out keeps running on a background thread — the response is bounded, the work is
+not cancelled.
+
+If the cross-encoder can't load (see Environment), retrieval still answers from
+the fused ranking and says so: `"degraded": {"rerank": "degraded"}`.
+
+### The log
+
+Every `/ask` — answered, refused or failed — appends one JSON line to
+`logs/runs.jsonl`. Read it without writing code:
+
+```bash
+python metrics.py --summary          # counts, error kinds, latency, per-stage times
+tail -n 5 logs/runs.jsonl            # the raw records
+```
+
+Fields: `ts`, `request_id`, `server`/`pid`/`port` (which process answered),
+`question`, `outcome` (`answered | refused | degraded_answered | error`),
+`error_kind`, `reason`, `stage`, `http_status`, `degraded`, `duration_ms`,
+`stage_ms` (`retrieve`/`gate`/`generate`), token counts, `attempts`,
+`pacing_ms` (time spent waiting on the rate limiter — if nonzero, that run's
+latency is the limiter's), `detail` (the raw exception text, log only).
+
+### Fault harness
+
+`tools/faults.py` produces the bad path on demand, with real HTTP against a
+throwaway server (cache off):
+
+```bash
+python tools/faults.py --list
+python tools/faults.py --fault f4_empty_response
+python tools/faults.py --all             # f1…f6; f3 and f6 call the real model
+```
+
+Set `AI201_LOG_DIR=somewhere` first if you don't want these in `logs/runs.jsonl`.
+
+### Environment
+
+| Setting | Value |
 |---|---|
-| `POST /ask` | Send `{"question": "..."}`, get the answer and its sources back as JSON |
-| `GET /health` | Says whether the service is up and whether an index exists to search |
-| `PORT` | The port to listen on. Hosts set it for you; on your laptop it defaults to 5000 |
-| `AI201_DEBUG=1` | Flask's reloader and debugger. Local only — never set it on a deployed service |
+| Python | **3.12** (3.11–3.13 work; **not 3.14**) |
+| Install | `python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt` |
+| Key | `cp .env.example .env`, paste `GEMINI_API_KEY` |
+| Pinned dependencies | `requirements.txt` — Flask, chromadb 0.6, google-genai, rank-bm25, python-dotenv, posthog |
+| Embedder (always) | Chroma's bundled ONNX `all-MiniLM-L6-v2`, **~80 MB**, from `chroma-onnx-models.s3.amazonaws.com`, cached in `~/.cache/chroma` |
+| Reranker (optional) | cross-encoder `cross-encoder/ms-marco-MiniLM-L-6-v2`, **~88 MB** from Hugging Face; needs `pip install 'sentence-transformers>=3.4,<3.5'` (pulls in PyTorch: **~626 MB** of torch, the whole venv ≈ 1.4 GB) |
+| Index | `chroma_db/`, 25 MB, rebuilt automatically by `run.sh` (~5 s) |
 
-> If you put it on a host anyway — not this project's path — the free tier
-> sleeps after about fifteen minutes with no traffic, so the first request
-> after a quiet spell waits roughly a minute. That's the tier, not your code.
+**The reranker is optional on purpose.** `requirements.txt` leaves out
+`sentence-transformers` (PyTorch is the heavy part), so a clean install runs
+**degraded**: answers come from the fused BM25 + embedding ranking, flagged
+`degraded.rerank = "degraded"` in the response and the log. Before unit 9 that
+install failed every question outright. To get reranked answers, install the
+line in the table above. Every number in the README is labelled with which mode
+produced it.
 
-`serve.py` has **no logging and no timing in it on purpose** — building that is
-the unit 9 exercise, and it is easier to instrument something you wrote.
+Optional environment variables: `AI201_CORPUS` (default `city_guides` under
+`run.sh`, `campus_life` otherwise), `AI201_CACHE=0` (turn the response cache
+off — do this when measuring), `AI201_MODEL`, `PORT` (default 5001),
+`AI201_LOG_DIR` (where `runs.jsonl` goes, default `logs/`),
+`AI201_GENERATION_TIMEOUT_S` (default 30), `AI201_MAX_QUESTION_CHARS`
+(default 1000), `AI201_DEBUG=1` (Flask debugger — local only).
+
+### Measuring what a run costs
+
+Turn the cache off, or a repeated question reports zero tokens. With `./run.sh`
+up in another terminal (restart it with `AI201_CACHE=0 ./run.sh`), run ten
+different questions, spaced so you stay under 30 model calls a minute:
+
+```bash
+Q=(
+  "Where can I go to eat at Givens Mill?"
+  "How expensive is it to stay at Thornby Wells?"
+  "What is the tram schedule in Marchwood on the weekend?"
+  "What are good places to visit with limited mobility?"
+  "Where can I go for bird watching?"
+  "How often do buses run from Brightwater to Kestrelford on Saturdays?"
+  "How long does the train take from Brightwater to the regional hub?"
+  "Why is parking a problem in Halden Bay on summer weekends?"
+  "Which walking route follows the old railway line that closed in 1963?"
+  "Do the different bus operators in the region accept each other's tickets?"
+)
+for q in "${Q[@]}"; do
+  curl -s -X POST localhost:5001/ask -H 'Content-Type: application/json' \
+    -d "{\"question\": \"$q\"}" > /dev/null
+done
+python metrics.py --summary          # tokens_in / tokens_out / duration_ms
+```
+
+Tokens come off the model's own responses (`generate.py::_record_tokens`), one
+pair per record in the log. The last five are measurement inputs, kept here and
+not in `questions.py`, which stays units 1–2's test set.
 
 ---
 
