@@ -768,3 +768,59 @@ tightened to 5/5.
 Criterion 3's target (4/5 gate refusals) was overly loose, and identifies a substantial failure case. If an out of context
 question is not refused at the gate, then we are relying on the llm to either identify this, or risk a hallucination. It should be
 5/5 gate refusals for this small question set.
+
+---
+
+*Unit 2's "What's Still Broken" above is kept as history; the current list is under `# Unit 9` → What's Still Broken.*
+
+# Unit 9
+
+## What This Extends
+
+This extends **The Unofficial Guide**, the retrieval-augmented question-answering system over the `city_guides` corpus that I built in units 1 and 2: chunking, hybrid BM25 + vector retrieval with a cross-encoder rerank, a relevance gate that refuses out-of-scope questions before the model is called, and a grounded Gemini answer that names its sources.
+
+What's new this unit is a hardening layer plus the operational layer around it. Every request to `POST /ask` now returns a grounded answer, a gate refusal, or a *classified* failure (a status code and a machine-readable `error_kind`, never a raw traceback), and in all three cases leaves one structured record in `logs/runs.jsonl`. Answer quality is unchanged on purpose: retrieval, chunking, the gate threshold and the prompt are exactly what unit 2 left behind.
+
+## The Shape
+
+**Shape B: harden against failure.** Unit 9 adds a layer around the existing five-stage pipeline. A request is bounded by a wall-clock timeout on the model call, an empty model response is treated as a failure instead of returned as a `200`, malformed input gets a `400` instead of a `500`, a missing index gets a `503` that names the fix, and retrieval still answers (flagged as degraded) if the cross-encoder reranker can't load.
+
+The brief requires the run path and the log in every shape, so the operational layer of shape A is carried alongside: one documented start command (`run.sh`), a service that answers JSON over `curl`, one structured record per request including failures, a summary reader for the log, and a measured cost per run.
+
+**Out of scope:**
+
+1. **Retrieval quality.** I'm not touching the chunker, `THRESHOLD`, BM25/RRF fusion or the cross-encoder choice, and no retrieval dial moves before the criteria are measured. The one exception is the Milestone 6 improvement, which the brief requires to follow the diagnosis: if a measured miss points at a retrieval dial such as `TOP_K`, that dial moves once, everything is re-run three trials each, what got worse is named, and this item is amended in the same commit as the fix.
+2. **Hosted deployment (Path A).** The system is deployed, on Path B (local with logs). I'm not signing up for a host, writing a Dockerfile or a Procfile.
+3. **Traffic handling.** No auth, API keys, per-client limits, queueing or cache changes, and no 10× load test. The existing `REQUESTS_PER_MINUTE` pacing stays a guard rail, not a dial.
+4. **The CLI and the local harnesses.** `app.py` subcommands behave as before (only the shared `ask_pipeline` gains fields). `run_eval.py` stays unhardened, so one bad upstream still aborts a whole eval; that is named, not fixed, because changing it would move the instrument unit 1/2's numbers came from. `questions.py` stays exactly as shipped.
+5. **The interface.** I'm not rebuilding the interface. The service serves JSON over `POST /ask` and `GET /health` (as it has since unit 2), exercised with `curl`, plus the `app.py` CLI. No browser page, no `GET /`, no `static/`, no production server.
+
+**Stretch:** one stretch feature is added this unit, declared before it is built: a **latency breakdown**, the measured per-stage (`stage_ms`) table over the cost runs, with a sentence on which stage dominates. The other three optional items (a second measured improvement, a 10× load observation, both run paths) are declined: a second fix would make the before/after ambiguous, a load run would measure Flask's dev server and a single-user global rather than this system as scoped, and both run paths means hosted deployment, which item 2 rules out.
+
+## Running It
+
+*Path B — local with logs: one documented start command, a committed run record, text only.* The retriever loads two local models (Chroma's ONNX embedder, about 80 MB, and a `sentence-transformers` cross-encoder that pulls in PyTorch, about 2 GB), which will not fit the 512 MB free hosting tier. The brief directs that case to Path B, which is worth the same as hosting. The start command, the Python version, dependencies and model downloads are in [RUNNING.md](RUNNING.md) (filled in Milestone 3). The service answers `POST /ask` as JSON text, driven with the `curl` examples in that file. Path A is out of scope by decision (scope item 2), and the interface is out of scope by declaration (scope item 5).
+
+## Instrumentation
+
+_(filled in Milestone 3)_
+
+## What It Costs
+
+_(filled in Milestone 3 and 7)_
+
+## Run Log and Verdicts
+
+_(filled in Milestone 5)_
+
+## The Improvement
+
+_(filled in Milestone 6)_
+
+## What's Still Broken
+
+_(filled in Milestone 7)_
+
+## How I Used AI
+
+_(filled in Milestone 7)_
