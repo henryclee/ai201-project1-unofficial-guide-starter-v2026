@@ -263,8 +263,8 @@ how long it took*, and malformed requests are exactly the ones whose input is
 least obvious.
 
 **How it's checked:** `AI201_LOG_DIR=logs/c4-tN ./run.sh`, send the 12 requests
-with `curl`, then `wc -l logs/c4-tN/runs.jsonl` and a one-line `python` loop that
-`json.loads` every line and tests the four fields for `None`.
+with `curl`, then `wc -l logs/c4-tN/runs.jsonl` and a one-line `python` loop 
+that `json.loads` every line and tests the four fields for `None`.
 
 **Fails if:** the line count differs from 12 (a request that skipped the
 `finally`), a line doesn't parse, or any of the four fields is `null`.
