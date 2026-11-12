@@ -855,7 +855,7 @@ runs with pacing_ms > 0: 0  (those latencies include the rate limiter)
 | generate (the Gemini call) | 8,984 ms | 8,169 ms | 13,992 ms |
 | **whole request (`duration_ms`)** | **9,072 ms** | **8,258 ms** | **14,081 ms** |
 
-The model call is 99% of a warm request; everything this system does locally is under a tenth of a second. (A cold first request is slower: about 3.1 s of retrieval while the cross-encoder loads.)
+The model call is 99% of a warm request; everything this system does locally is under a tenth of a second. (Before the Milestone 6 fix, the first request after start-up was slower: about 3.1 s of retrieval while the cross-encoder loaded; it now loads at start-up — see The Improvement.)
 
 ## What It Costs
 
@@ -946,11 +946,48 @@ and the trial 3 miss (a provider 503):
 {"ts": "2026-11-12T09:40:28.817-05:00", "server": "flask-dev", "pid": 88653, "port": 60106, "request_id": "98341489", "endpoint": "/ask", "outcome": "answered", "error_kind": null, "http_status": 200, "degraded": {"rerank": "ok"}, "stage_ms": {"retrieve": 3070.0, "gate": 0.0, "generate": 1082.4}, "n_results": 7, "n_candidates": 25, "refused": false, "answer_chars": 106, "tokens_in": 712, "tokens_out": 27, "attempts": 1, "pacing_ms": 0.0, "question": "How expensive is it to stay at Thornby Wells?", "duration_ms": 4152.9, "model": "gemini-3.5-flash-lite"}
 ```
 
-_(Verdicts are in the table; diagnoses and the fix are added in Milestone 6.)_
+### Diagnoses
+
+**Criterion 5 — MISSED (0/3 in every trial; first retrieval 3,051–3,147 ms against ~90 ms warm).** Stage: retrieve; component: `store.py::_cross_encoder()` and `_embedder()`, which load their models lazily on first use. I profiled a fresh process rather than assume: the cross-encoder weights load in 2,526 ms, its first `predict` takes another 824 ms (framework warm-up), and the ONNX embedder takes 484 ms; once those have happened a full search is 57–82 ms. The mechanism is that all of that happens inside the first request after start-up, so a model load is billed to whoever asks first. My criterion's 500 ms target assumed retrieval cost was the same on every request.
+
+**Criterion 4 — MISSED (8/12 complete in every trial; 12 lines for 12 requests, all parseable).** Stage: the HTTP edge, in the logging code in `serve.py::ask`, not in the pipeline. `question_text` is only assigned once the body has been validated as a usable question, so the four malformed bodies that have no usable question (`{}`, `{"question": 123}`, `{"question": ""}`, non-JSON) are logged with `question: null`. The fifth (5,000 characters) *is* a string, so it was logged. Every request did leave exactly one record, so the `finally` works; what's missing is the input on exactly the requests whose input is least obvious. This is an instrumentation failure, not a pipeline failure.
+
+**Criterion 3 — MISSED (4/5, 5/5, 4/5).** Stage: generate, and in neither miss was it the degraded-reranker path: every request that got a 200 was flagged `degraded`, had sources and named one (14 of 14 successful answers before the fix). Trial 1: one real model call took longer than `GENERATION_TIMEOUT_S` = 30 s (`stage_ms.generate` = 30,006 ms) and was answered 504 `model_timeout` — the timeout I built, firing on a legitimately slow provider response (I saw a trivial 32-token prompt take 32.9 s outside the pipeline while writing the criteria). Trial 3: the provider returned `503 UNAVAILABLE … high demand` after 18.5 s, and `generate.py`'s retry loop only retries messages matching its rate-limit patterns (`429`, `resource`+`exhaust`, `rate`+`limit`), so a transient 503 went straight to `UpstreamError(reason="api_error")` with no second attempt. The criterion, as I wrote it, measured provider availability through the pipeline as much as it measured the degrade path.
+
+**Pattern.** Three misses, three different stages and no shared cause: criterion 5 is lazy model loading in retrieval, criterion 4 is a log field populated too late at the HTTP edge, and criterion 3 is the model service (a slow call and an un-retried 503). Criteria 1 and 2 were met in every trial.
 
 ## The Improvement
 
-_(filled in Milestone 6)_
+**What I changed (one change, aimed at criterion 5):** `store.py::warm_up()` loads the ONNX embedder, loads the cross-encoder and runs one throwaway rerank, and `serve.py::main()` calls it before `app.run`, printing `Loading models…` / `Models ready in N s`. It follows the criterion 5 diagnosis directly: the 3.1 s was model loading and first-call warm-up happening inside the first request, so the fix moves exactly that work to start-up. If the reranker can't be loaded, `warm_up` takes the same degrade path as a request (flags it, remembers it, never raises), so a clean install without `sentence-transformers` still starts. I chose this over fixing criterion 4 because it is the cleanest cause-and-effect and leaves criterion 4's smaller fix for later.
+
+**Before and after, side by side** (same runner, same procedure, three trials each):
+
+*Before the fix* — `results/run_2026-11-12_0938_unit9-before.md`
+
+Three trials of the five criteria in `criteria.md`, nothing changed between them. Produced by
+`python tools/run_criteria.py --trial N --phase before` (one trial = one invocation; start
+2026-11-12 09:38, 09:41, 09:43). Every server it starts has the response cache off
+(`AI201_CACHE=0`) and its own log directory, `logs/before-tN/cK/`. Model: `gemini-3.5-flash-lite`.
+Reranker mode: `ok` (sentence-transformers 3.4.1 installed) for criteria 1, 2, 4 and 5; criterion 3
+removes it on purpose. Raw per-trial output: `results/unit9-before-trial{1,2,3}.txt`.
+
+*After the fix* — `results/run_2026-11-12_0952_unit9-after.md`
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Injected failures come back classified, nothing leaked (F1 ×5, F2, F3, F4) | 8 of 8 | 8/8 | 8/8 | 8/8 | MET |
+| 2. A hung model call is abandoned within 35 s (F5) | 504 `model_timeout` in ≤ 35 s, every trial | 1/1 (30.1 s) | 1/1 (30.1 s) | 1/1 (30.1 s) | MET |
+| 3. Without the reranker, all 5 test questions still answer, grounded and flagged | 5 of 5 | 5/5 | 5/5 | 5/5 | MET (not attributable to the fix) |
+| 4. Every `/ask` leaves exactly one complete log record | 12 of 12 (and 12 lines for 12 requests) | 8/12 (12 lines) | 8/12 (12 lines) | 8/12 (12 lines) | MISSED |
+| 5. First request after start-up retrieves in ≤ 500 ms | 3 of 3 restarts | 3/3 (73.9 / 74.4 / 76.3 ms) | 3/3 (85.1 / 78.8 / 78.8 ms) | 3/3 (76.0 / 80.8 / 74.0 ms) | MET |
+
+**Did it help?** Yes, for the criterion it was aimed at. First-request retrieval went from 3,051–3,147 ms (9 of 9 restarts missed) to 73.9–85.1 ms (9 of 9 met), about 40× faster and now the same as a warm request. I know it's the change and not noise because the two sets of nine numbers don't come close to overlapping, and the profile of the cause (2.5 s + 0.8 s + 0.5 s of loading) accounts for the whole difference.
+
+**What it did elsewhere:**
+- *Criterion 2 improved as a side effect:* the hung-call test went from 33.1–33.2 s to 30.1 s in all three trials, because it no longer includes a cold retrieval. The 35 s target now has a 5 s margin instead of under 2.
+- *Criterion 4 is unchanged* (8/12 in every trial, same four records). The fix doesn't touch the logging path, and it is still MISSED.
+- *Criterion 3 went from 4/5, 5/5, 4/5 to 5/5 in all three trials, but I can't credit the fix.* The change doesn't touch `generate.py`, and the earlier misses were a provider timeout and a provider 503. Fifteen of fifteen calls succeeding this time is the provider being steadier, not evidence that the degrade path or my change improved. I'm reporting it as MET against the target while saying the verdict is not attributable.
+- *The cost:* start-up is about 3.5 s slower (`warm_up` took 3.46 s in a fresh process), and the server does not answer `/health` until the models are loaded. Locally that is the right trade; behind a host that health-checks quickly it would not be. The same models end up resident in memory either way: before, loaded by the first request; now, by start-up.
 
 ## What's Still Broken
 

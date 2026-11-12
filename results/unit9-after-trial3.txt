@@ -1,0 +1,40 @@
+=== after trial 3  (2026-11-12 09:56:56) ===
+
+Criterion 1
+  [PASS] f1 {}: 400 bad_input  (0.0s)  {"error":"Send JSON with a question in it, like {\"question\": \"is the housing lottery random?\"}","error_kind":"bad_input","message":"Send JSON with a question in it, l
+  [PASS] f1 {"question": 123}: 400 bad_input  (0.0s)  {"error":"Send JSON with a question in it, like {\"question\": \"is the housing lottery random?\"}","error_kind":"bad_input","message":"Send JSON with a question in it, l
+  [PASS] f1 {"question": ""}: 400 bad_input  (0.0s)  {"error":"Send JSON with a question in it, like {\"question\": \"is the housing lottery random?\"}","error_kind":"bad_input","message":"Send JSON with a question in it, l
+  [PASS] f1 {"question": "x"*5000}: 400 bad_input  (0.0s)  {"error":"Question is too long (max 1000 characters).","error_kind":"bad_input","message":"Question is too long (max 1000 characters).","request_id":"502c1c09"}
+  [PASS] f1 not json: 400 bad_input  (0.0s)  {"error":"Send JSON with a question in it, like {\"question\": \"is the housing lottery random?\"}","error_kind":"bad_input","message":"Send JSON with a question in it, l
+  [PASS] f2 no_index: 503 no_index  (0.0s)  {"error":"No index called 'city_guides__default'. Run `python app.py index` first.","error_kind":"no_index","message":"No index called 'city_guides__default'. Run `python
+  [PASS] f3 invalid_key: 502 upstream  (0.5s)  {"error":"The model service failed to produce an answer. Try again shortly.","error_kind":"upstream","message":"The model service failed to produce an answer. Try again s
+  [PASS] f4 empty_response: 502 upstream  (0.1s)  {"error":"The model service failed to produce an answer. Try again shortly.","error_kind":"upstream","message":"The model service failed to produce an answer. Try again s
+  -> criterion 1: 8/8  [15s]
+
+Criterion 2
+  [PASS] f5 hung upstream: 504 model_timeout in 30.1s (limit 35 s)  {"error":"The model did not answer in time. Try again.","error_kind":"model_timeout","message":"The model did not answer in time. Try again.","request_id":"32f801dc"}
+  -> criterion 2: 1/1 (30.1s)  [34s]
+
+Criterion 3
+  [PASS] 'Where can I go to eat at Givens Mill?': 200 degraded={'rerank': 'degraded'} sources=3 names_source=True (7.8s)  Based on the provided documents, you can go to eat at:  * A tearoom attached to the mill (which is open 10 to 
+  [PASS] 'How expensive is it to stay at Thornby Wells?': 200 degraded={'rerank': 'degraded'} sources=3 names_source=True (8.9s)  Based on the provided document (`guide_thornby_wells.md`), the prices to stay at Thornby Wells are moderate an
+  [PASS] 'What is the tram schedule in Marchwood on the we': 200 degraded={'rerank': 'degraded'} sources=3 names_source=True (0.7s)  Based on the provided documents, the tram network in Marchwood runs every 15 minutes at weekends, until midnig
+  [PASS] 'What are good places to visit with limited mobil': 200 degraded={'rerank': 'degraded'} sources=5 names_source=True (1.1s)  Based on the provided documents, there are no places listed as "good" places to visit with limited mobility. I
+  [PASS] 'Where can I go for bird watching?': 200 degraded={'rerank': 'degraded'} sources=3 names_source=True (9.0s)  Based on the provided documents, you can go for bird watching at Elder Ness (from guide_elder_ness.md).
+  -> criterion 3: 5/5  [29s]
+
+Criterion 4
+  requests sent: 12   log lines: 12   unparseable: 0   complete: 8/12
+    incomplete: request_id=2dfde929 outcome=error missing=['question']
+    incomplete: request_id=a37a05c1 outcome=error missing=['question']
+    incomplete: request_id=61648f05 outcome=error missing=['question']
+    incomplete: request_id=66df8ea5 outcome=error missing=['question']
+  -> criterion 4: 8/12 complete, 12 lines for 12 requests  [27s]
+
+Criterion 5
+  [PASS] restart 1: first /ask status 200, stage_ms.retrieve = 76.0 ms (limit 500)
+  [PASS] restart 2: first /ask status 200, stage_ms.retrieve = 80.8 ms (limit 500)
+  [PASS] restart 3: first /ask status 200, stage_ms.retrieve = 74.0 ms (limit 500)
+  -> criterion 5: 3/3 restarts  [23s]
+
+SUMMARY {"1": "8/8", "2": "1/1 (30.1s)", "3": "5/5", "4": "8/12 complete, 12 lines for 12 requests", "5": "3/3 restarts"}
