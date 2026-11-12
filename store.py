@@ -20,6 +20,8 @@ rest of the project if they were wrong:
 import os
 import re
 import shutil
+import sys
+import threading
 from dataclasses import dataclass
 
 # Must be set BEFORE chromadb is imported. Without it, some Chroma versions
@@ -33,6 +35,7 @@ from rank_bm25 import BM25Okapi  # noqa: E402
 
 import config
 from chunker import Chunk
+from errors import NoIndexError
 
 
 @dataclass
@@ -48,6 +51,16 @@ class Result:
 
 _model = None
 _reranker = None
+_reranker_failed = False  # once the cross-encoder fails to load, stop retrying per request
+
+# Unit 9: what the last search() in THIS THREAD did, for the log. Thread-local
+# because Flask's dev server answers each request on its own thread, and
+# ask_pipeline reads this on the same thread that ran search().
+_last = threading.local()
+
+
+def last_retrieval() -> dict:
+    return getattr(_last, "info", {"rerank": "ok", "candidates": 0, "results": 0})
 
 # The model Chroma bundles. Anything else in config.EMBEDDING_MODEL means
 # "fetch that one from Hugging Face instead" — see `_embedder`.
@@ -162,10 +175,28 @@ def _rerank(question: str, results: list["Result"]) -> list["Result"]:
     much wording with the question, which is exactly where cosine similarity
     ranks true positives unevenly (see config.RERANK_CANDIDATES).
     """
+    global _reranker_failed
     if not results:
         return results
 
-    scores = _cross_encoder().predict([(question, r.text) for r in results])
+    # Unit 9: the reranker is an optimisation, not a precondition. If it can't
+    # load (sentence-transformers isn't in requirements.txt on purpose), return
+    # the fused RRF order unchanged and flag it, instead of failing every query.
+    try:
+        if _reranker_failed:
+            raise RuntimeError("cross-encoder previously failed to load")
+        scores = _cross_encoder().predict([(question, r.text) for r in results])
+    except Exception as exc:  # noqa: BLE001
+        if not _reranker_failed:
+            print(
+                f"  [rerank] cross-encoder unavailable ({type(exc).__name__}); "
+                f"answering from the fused order instead.",
+                file=sys.stderr,
+                flush=True,
+            )
+        _reranker_failed = True
+        _last.info = {**getattr(_last, "info", {}), "rerank": "degraded"}
+        return results
     return [r for _, r in sorted(zip(scores, results), key=lambda pair: -pair[0])]
 
 
@@ -281,9 +312,19 @@ def search(
     try:
         collection = _client().get_collection(name)
     except Exception as exc:
-        raise RuntimeError(
-            f"No index called '{name}'. Run `python app.py index` first."
+        raise NoIndexError(
+            f"No index called '{name}'. Run `python app.py index` first.",
+            stage="retrieve",
+            detail=f"{type(exc).__name__}: {exc}",
         ) from exc
+
+    if collection.count() == 0:
+        raise NoIndexError(
+            f"The index '{name}' is empty. Run `python app.py index` first.",
+            stage="retrieve",
+        )
+
+    _last.info = {"rerank": "ok", "candidates": 0, "results": 0}
 
     # n_results=collection.count(): every chunk, ranked, with a real cosine
     # distance for each one. Cheap at this corpus's scale, and it means BM25
@@ -328,7 +369,9 @@ def search(
     candidate_ids = candidate_ids[: min(config.RERANK_CANDIDATES, len(candidate_ids))]
 
     candidates = [by_id[cid] for cid in candidate_ids]
-    return _rerank(question, candidates)[:top_k]
+    ranked = _rerank(question, candidates)[:top_k]
+    _last.info = {**_last.info, "candidates": len(candidates), "results": len(ranked)}
+    return ranked
 
 
 def list_sources(corpus: str | None = None, variant: str = "default") -> list[str]:
@@ -344,8 +387,10 @@ def list_sources(corpus: str | None = None, variant: str = "default") -> list[st
     try:
         collection = _client().get_collection(name)
     except Exception as exc:
-        raise RuntimeError(
-            f"No index called '{name}'. Run `python app.py index` first."
+        raise NoIndexError(
+            f"No index called '{name}'. Run `python app.py index` first.",
+            stage="retrieve",
+            detail=f"{type(exc).__name__}: {exc}",
         ) from exc
 
     raw = collection.get(include=["metadatas"])

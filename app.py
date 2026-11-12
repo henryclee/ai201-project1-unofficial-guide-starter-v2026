@@ -206,8 +206,16 @@ def ask_pipeline(
     on_prompt=None,
     on_condense=None,
     history=None,
+    request_id=None,
 ):
     """Retrieve, gate, answer. Returns the outcome and prints nothing.
+
+    Unit 9 additions (all new dict keys are additive): `request_id`,
+    `error_kind` (None here; a failure raises, and serve.py classifies it),
+    `degraded`, `duration_ms`, `stage_ms`, `n_results`, `n_candidates`,
+    `answer_chars`, `attempts`, `pacing_ms`, `tokens_in`, `tokens_out`. When a
+    stage raises, the exception is tagged with `pipeline_stage` and
+    `pipeline_stage_ms` so the failure can still be logged per stage.
 
     One question through all five stages, with the result handed back as a
     plain dict instead of printed. `_ask_one` below prints it for the command
@@ -228,45 +236,88 @@ def ask_pipeline(
     chunks), and to give the model the prior turns as context when answering.
     `on_condense` is handed the rewritten query, when one was computed.
     """
-    from store import search
+    import time
+    import uuid
+
+    from store import last_retrieval, search
     import gate
+    import generate as gen
     from generate import answer_from_chunks, build_prompt, condense_query
 
-    search_query = condense_query(question, history) if history else question
-    if history and on_condense is not None:
-        on_condense(search_query)
+    t_start = time.perf_counter()
+    stage_ms: dict = {}
+    stage = "retrieve"
+    tokens_before = gen.token_counts()
 
-    results = search(
-        search_query,
-        top_k=top_k or config.TOP_K,
-        corpus=corpus or config.CORPUS,
-        variant=variant,
-        source=source,
-    )
-    decision = gate.check(results, threshold=threshold)
-    if on_gate is not None:
-        on_gate(decision)
+    try:
+        search_query = condense_query(question, history) if history else question
+        if history and on_condense is not None:
+            on_condense(search_query)
 
-    outcome = {
-        "question": question,
-        "refused": not decision.passed,
-        "best_distance": decision.best_distance,
-        "threshold": decision.threshold,
-        "sources": [],
-        "prompt": None,
-    }
+        t = time.perf_counter()
+        results = search(
+            search_query,
+            top_k=top_k or config.TOP_K,
+            corpus=corpus or config.CORPUS,
+            variant=variant,
+            source=source,
+        )
+        stage_ms["retrieve"] = round((time.perf_counter() - t) * 1000, 1)
 
-    if not decision.passed:
-        outcome["answer"] = gate.REFUSAL
-        return outcome
+        stage = "gate"
+        t = time.perf_counter()
+        decision = gate.check(results, threshold=threshold)
+        if on_gate is not None:
+            on_gate(decision)
+        stage_ms["gate"] = round((time.perf_counter() - t) * 1000, 1)
 
-    prompt = build_prompt(question, results, history)
-    if on_prompt is not None:
-        on_prompt(prompt)
+        retrieval = last_retrieval()
+        outcome = {
+            "question": question,
+            "refused": not decision.passed,
+            "best_distance": decision.best_distance,
+            "threshold": decision.threshold,
+            "sources": [],
+            "prompt": None,
+            "request_id": request_id or uuid.uuid4().hex[:8],
+            "error_kind": None,
+            "degraded": {"rerank": retrieval["rerank"]},
+            "n_results": len(results),
+            "n_candidates": retrieval["candidates"],
+            "attempts": 0,
+            "pacing_ms": 0.0,
+        }
 
-    outcome["prompt"] = prompt
-    outcome["answer"] = answer_from_chunks(question, results, history=history)
-    outcome["sources"] = sorted({r.source for r in results})
+        if not decision.passed:
+            outcome["answer"] = gate.REFUSAL
+        else:
+            prompt = build_prompt(question, results, history)
+            if on_prompt is not None:
+                on_prompt(prompt)
+
+            outcome["prompt"] = prompt
+            stage = "generate"
+            t = time.perf_counter()
+            outcome["answer"] = answer_from_chunks(question, results, history=history)
+            stage_ms["generate"] = round((time.perf_counter() - t) * 1000, 1)
+            call = gen.last_call()
+            outcome["attempts"] = call["attempts"]
+            outcome["pacing_ms"] = round(call["pacing_ms"], 1)
+            outcome["sources"] = sorted({r.source for r in results})
+    except Exception as exc:  # noqa: BLE001 — tagged and re-raised, never swallowed
+        stage_ms[stage] = round((time.perf_counter() - t) * 1000, 1) if "t" in locals() else None
+        exc.pipeline_stage = getattr(exc, "stage", None) or stage
+        exc.pipeline_stage_ms = dict(stage_ms)
+        if getattr(exc, "stage", None) is None and hasattr(exc, "stage"):
+            exc.stage = stage
+        raise
+
+    tokens_after = gen.token_counts()
+    outcome["stage_ms"] = stage_ms
+    outcome["duration_ms"] = round((time.perf_counter() - t_start) * 1000, 1)
+    outcome["answer_chars"] = len(outcome["answer"])
+    outcome["tokens_in"] = tokens_after["prompt"] - tokens_before["prompt"]
+    outcome["tokens_out"] = tokens_after["output"] - tokens_before["output"]
     return outcome
 
 

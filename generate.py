@@ -32,9 +32,11 @@ import hashlib
 import json
 import os
 import sys
+import threading
 import time
 
 import config
+from errors import ModelTimeoutError, PipelineError, UpstreamError
 
 _call_times: list[float] = []
 _session_calls = 0
@@ -47,6 +49,45 @@ _budget_warned = False
 
 class QuotaGuard(Exception):
     """Raised when a session blows through its request budget."""
+
+
+# Unit 9: what the last generate() in THIS THREAD did, for the log.
+_last = threading.local()
+
+# An empty model response gets exactly one more attempt, then fails.
+_EMPTY_RETRIES = 1
+
+
+def last_call() -> dict:
+    return getattr(_last, "info", {"attempts": 0, "pacing_ms": 0.0, "timed_out": False})
+
+
+def _call_with_timeout(fn, timeout: float):
+    """Run fn() and give up waiting after `timeout` seconds.
+
+    Bounds the RESPONSE, not the WORK: a hung call keeps running on its daemon
+    thread after we stop waiting (Python can't cancel it), it just can't hold
+    the request any longer. A daemon thread, not `with ThreadPoolExecutor`,
+    whose exit waits for the hung call and would silently defeat the timeout.
+    """
+    box: dict = {}
+
+    def run():
+        try:
+            box["value"] = fn()
+        except BaseException as exc:  # noqa: BLE001 — re-raised in the caller
+            box["error"] = exc
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive():
+        raise ModelTimeoutError(
+            stage="generate", detail=f"no response within {timeout:g}s"
+        )
+    if "error" in box:
+        raise box["error"]
+    return box["value"]
 
 
 # ─── Cache ───────────────────────────────────────────────────────────────────
@@ -220,31 +261,57 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
 
     if use_cache:
         hit = _cache_read(key)
-        if hit is not None:
+        if hit:  # an empty cached answer is a miss, never a hit
             _cache_hits += 1
             return hit
 
-    _check_budget()
+    _last.info = {"attempts": 0, "pacing_ms": 0.0, "timed_out": False}
+    info = _last.info
+
+    _check_budget()  # QuotaGuard escapes as-is; errors.classify maps it to upstream/quota
 
     last_error: Exception | None = None
+    empty_seen = 0
     for attempt in range(config.MAX_RETRIES):
+        paced = time.perf_counter()
         _wait_for_slot()
+        info["pacing_ms"] += (time.perf_counter() - paced) * 1000
         try:
             client = _get_client()
             _call_times.append(time.monotonic())
             _session_calls += 1
+            info["attempts"] += 1
 
             kwargs = {"model": config.MODEL, "contents": prompt}
             if system:
                 kwargs["config"] = {"system_instruction": system}
 
-            response = client.models.generate_content(**kwargs)
+            response = _call_with_timeout(
+                lambda: client.models.generate_content(**kwargs),
+                config.GENERATION_TIMEOUT_S,
+            )
             _record_tokens(response)
             text = (response.text or "").strip()
+
+            if not text:
+                # Never return "" as an answer (it looked like a success).
+                if empty_seen < _EMPTY_RETRIES:
+                    empty_seen += 1
+                    continue
+                raise UpstreamError(
+                    stage="generate",
+                    reason="empty_response",
+                    detail=f"empty model response after {empty_seen + 1} attempts",
+                )
 
             if use_cache:
                 _cache_write(key, text)
             return text
+
+        except PipelineError as exc:
+            if isinstance(exc, ModelTimeoutError):
+                info["timed_out"] = True
+            raise
 
         except Exception as exc:  # noqa: BLE001 — surfaced below
             last_error = exc
@@ -257,7 +324,13 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
                 and "limit" in message
             )
             if not rate_limited:
-                raise
+                # Wrapped so classify() maps it to 502; the provider's text goes
+                # to the log (detail), never to the caller.
+                raise UpstreamError(
+                    stage="generate",
+                    reason="api_error",
+                    detail=f"{type(exc).__name__}: {exc}",
+                ) from exc
             backoff = 2**attempt
             print(
                 f"  [rate limit] service pushed back. Retrying in {backoff}s "
@@ -267,9 +340,15 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
             )
             time.sleep(backoff)
 
-    raise RuntimeError(
-        f"Still rate limited after {config.MAX_RETRIES} attempts. Wait a "
-        f"minute and try again — your key is fine.\nLast error: {last_error}"
+    # The retry loop's pattern list above ("429", "resource"+"exhaust",
+    # "rate"+"limit") is what decides rate-limited vs api_error: don't reword it.
+    if empty_seen and last_error is None:
+        raise UpstreamError(stage="generate", reason="empty_response")
+    raise UpstreamError(
+        "The model service is rate limiting us. Wait a minute and try again.",
+        stage="generate",
+        reason="rate_limited",
+        detail=f"still rate limited after {config.MAX_RETRIES} attempts: {last_error}",
     )
 
 

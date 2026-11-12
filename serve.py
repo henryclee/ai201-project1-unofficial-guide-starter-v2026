@@ -2,7 +2,7 @@
 """
 The Unofficial Guide — the same pipeline, over HTTP.
 
-    python serve.py                          run it locally on port 5000
+    python serve.py                          run it locally on port 5001
 
 Nothing new happens in this file. It is a wrapper: a request comes in, it
 hands the question to `app.py::ask_pipeline` — the exact function the command
@@ -19,18 +19,25 @@ Why this exists: `app.py` runs once and exits, which is fine on your laptop
 and impossible to deploy. A hosted service has to stay up and wait for
 requests. This is the smallest thing that does that.
 
-⚠️ There is deliberately no logging, no timing and no metrics in this file.
-Unit 9 has you build the structured log yourself — the request line, the
-timing field everyone skips, the whole instrument-before-you-deploy exercise.
-Shipping a logger here would hand you the answer to that. Add yours in unit 9;
-this file stays the bare shell until then.
+Unit 9: every /ask — answered, refused or failed — is recorded by
+`metrics.py::record` from the `finally` in `ask()`, into logs/runs.jsonl.
+Failures are classified by `errors.py::classify`, which is the only thing that
+decides a status code; a caller gets `error`, `error_kind` and `request_id`,
+never exception text (that goes to the log).
 """
 
+import importlib.util
 import os
+import time
+import uuid
 
 from flask import Flask, jsonify, request
 
 import config
+import metrics
+from errors import BadInputError, classify
+
+metrics.configure(server="flask-dev")
 
 app = Flask(__name__)
 
@@ -53,6 +60,11 @@ def health():
             "status": "ok",
             "corpus": config.CORPUS,
             "index_ready": ready,
+            # Cheap: checks the package is importable, doesn't load the model.
+            "reranker": (
+                "ok" if importlib.util.find_spec("sentence_transformers") else "degraded"
+            ),
+            "log_path": str(config.LOG_FILE),
             "detail": (
                 "ready"
                 if ready
@@ -69,30 +81,34 @@ def ask():
     A refused question is a 200, not an error. The gate refusing is your
     system working — it is an answer, and the JSON says so with
     `"refused": true` so whatever calls this can tell the two apart.
+
+    Every call — including 400s, 5xx and timeouts — leaves exactly one record,
+    because the write lives in the `finally`.
     """
     from app import ask_pipeline
 
-    payload = request.get_json(silent=True) or {}
-    question = (payload.get("question") or "").strip()
-
-    if not question:
-        return (
-            jsonify(
-                {
-                    "error": "Send JSON with a question in it, like "
-                    '{"question": "is the housing lottery random?"}'
-                }
-            ),
-            400,
-        )
+    request_id = uuid.uuid4().hex[:8]
+    t0 = time.perf_counter()
+    question_text = None
+    rec: dict = {"request_id": request_id, "endpoint": "/ask"}
 
     try:
-        outcome = ask_pipeline(question, corpus=config.CORPUS)
-    except Exception as exc:  # noqa: BLE001 — a reader gets this, not a traceback
-        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
+        payload = request.get_json(silent=True)
+        question = payload.get("question") if isinstance(payload, dict) else None
+        if not isinstance(question, str) or not question.strip():
+            raise BadInputError(stage="bad_input")
+        question = question.strip()
+        question_text = question
+        if len(question) > config.MAX_QUESTION_CHARS:
+            raise BadInputError(
+                f"Question is too long (max {config.MAX_QUESTION_CHARS} characters).",
+                stage="bad_input",
+            )
 
-    return jsonify(
-        {
+        outcome = ask_pipeline(question, corpus=config.CORPUS, request_id=request_id)
+        status = 200
+        body = {
+            "request_id": request_id,
             "question": question,
             "answer": outcome["answer"],
             "refused": outcome["refused"],
@@ -100,8 +116,58 @@ def ask():
             "best_distance": round(outcome["best_distance"], 4),
             "threshold": outcome["threshold"],
             "corpus": config.CORPUS,
+            "degraded": outcome["degraded"],
         }
-    )
+        degraded = outcome["degraded"]["rerank"] == "degraded"
+        rec.update(
+            outcome=(
+                "refused"
+                if outcome["refused"]
+                else ("degraded_answered" if degraded else "answered")
+            ),
+            error_kind=None,
+            http_status=200,
+            degraded=outcome["degraded"],
+            stage_ms=outcome["stage_ms"],
+            n_results=outcome["n_results"],
+            n_candidates=outcome["n_candidates"],
+            refused=outcome["refused"],
+            answer_chars=outcome["answer_chars"],
+            tokens_in=outcome["tokens_in"],
+            tokens_out=outcome["tokens_out"],
+            attempts=outcome["attempts"],
+            pacing_ms=outcome["pacing_ms"],
+        )
+    except Exception as exc:  # noqa: BLE001 — classified, never leaked
+        err = classify(exc)
+        status = err.http_status
+        body = {
+            "error": err.user_message,
+            "message": err.user_message,
+            "error_kind": err.kind,
+            "request_id": request_id,
+        }
+        rec.update(
+            outcome="error",
+            error_kind=err.kind,
+            reason=err.reason,
+            stage=err.stage,
+            http_status=status,
+            detail=(err.detail or "")[:300] or None,
+            stage_ms=err.stage_ms,
+        )
+    finally:
+        rec.update(
+            question=(question_text or "")[:200] or None,
+            duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+            model=config.MODEL,
+        )
+        metrics.record(**rec)
+
+    response = jsonify(body)
+    response.status_code = status
+    response.headers["X-Request-Id"] = request_id
+    return response
 
 
 def main():
@@ -111,7 +177,9 @@ def main():
     # can't reach a socket that only accepts connections from inside the
     # container. It is the single most common way a first deploy "succeeds"
     # and is unreachable.
-    port = int(os.getenv("PORT", "5000"))
+    # 5001, not 5000: macOS's AirPlay Receiver listens on 5000.
+    port = int(os.getenv("PORT", "5001"))
+    metrics.configure(server="flask-dev", port=port)
 
     # Debug mode reloads on save, which is handy, and prints a console that
     # runs arbitrary code, which is not something to leave switched on where

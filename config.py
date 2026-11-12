@@ -100,6 +100,17 @@ CACHE_ENABLED = os.getenv("AI201_CACHE", "1") != "0"
 CACHE_DIR = ROOT / ".cache"
 
 
+# ─── Unit 9: hardening and the log ───────────────────────────────────────────
+# GENERATION_TIMEOUT_S bounds ONE model call (not the whole request: pacing
+# sleeps and retries sit outside it — see generate.py). The log directory is an
+# env knob so each measurement trial can write to its own folder.
+
+GENERATION_TIMEOUT_S = float(os.getenv("AI201_GENERATION_TIMEOUT_S", "30"))
+MAX_QUESTION_CHARS = int(os.getenv("AI201_MAX_QUESTION_CHARS", "1000"))
+LOG_DIR = Path(os.getenv("AI201_LOG_DIR", ROOT / "logs"))
+LOG_FILE = LOG_DIR / "runs.jsonl"
+
+
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
 CORPORA_DIR = ROOT / "corpora"
