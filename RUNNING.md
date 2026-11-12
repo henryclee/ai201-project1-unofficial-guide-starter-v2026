@@ -216,9 +216,10 @@ start it, on purpose.
 **The first run looks like a hang and isn't.** With no index, `run.sh` prints
 `no index for city_guides — building it now` and then downloads the ~80 MB
 embedder before it embeds 115 chunks (about 5 s once the model is on disk). It
-prints `index built.` when it is done. The first *question* after start-up is
-also slow (about 3 s) because the cross-encoder loads on the first request;
-every later request is warm.
+prints `index built.` when it is done. Every start-up then
+prints `Loading models…` and takes about 3.5 s more, because it loads both models
+(and runs one throwaway pass) before it begins listening — so the first
+question is as fast as the hundredth (about 75 ms of retrieval, not ~3 s).
 
 Port 5001 rather than 5000 because macOS's AirPlay Receiver already listens on
 5000.

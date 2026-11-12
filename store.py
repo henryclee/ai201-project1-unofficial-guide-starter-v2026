@@ -374,6 +374,27 @@ def search(
     return ranked
 
 
+def warm_up() -> float:
+    """Load both models and run one throwaway pass; returns seconds spent.
+
+    Unit 9: both models load lazily, so the first real request used to pay
+    ~3 s for them (ONNX embedder ~0.5 s, cross-encoder load ~2.5 s, its first
+    predict ~0.8 s). serve.py calls this before it starts listening, so that
+    cost is paid at start-up instead of inside someone's first question. If the
+    reranker can't load, _rerank() flags and remembers it, exactly as it does
+    for a request. Never raises.
+    """
+    import time
+
+    t = time.perf_counter()
+    try:
+        embed(["warm up"])
+        _rerank("warm up", [Result("warm up", "warm_up", "warm_up#0", 0.0, "warm_up")])
+    except Exception as exc:  # noqa: BLE001 — start-up must not fail on a warm-up
+        print(f"  [warm-up] skipped: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+    return time.perf_counter() - t
+
+
 def list_sources(corpus: str | None = None, variant: str = "default") -> list[str]:
     """The distinct source filenames present in an index, sorted.
 

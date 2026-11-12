@@ -186,6 +186,13 @@ def main():
     # strangers can reach it. Off unless you ask for it.
     debug = os.getenv("AI201_DEBUG", "0") == "1"
 
+    # Load the models now, before listening, so the first request is as fast as
+    # the hundredth (unit 9, criterion 5). Costs a few seconds of start-up.
+    from store import warm_up
+
+    print("Loading models (a few seconds)...", flush=True)
+    print(f"Models ready in {warm_up():.1f}s.\n", flush=True)
+
     print(f"Serving The Unofficial Guide on http://localhost:{port}")
     print(f"Corpus: {config.CORPUS}    (Ctrl-C to stop)\n")
     print("Try it from another terminal:\n")
