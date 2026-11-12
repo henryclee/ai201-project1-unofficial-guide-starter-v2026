@@ -92,7 +92,14 @@ def _log_lines() -> int:
 
 def _start_server(fault: str, env_extra=None):
     port = _free_port()
-    env = {**os.environ, "PORT": str(port), "AI201_CORPUS": os.getenv("AI201_CORPUS", "city_guides")}
+    # AI201_CACHE=0: a cached answer would skip the model call a fault is trying
+    # to break (the cache is keyed on the prompt, not the API key).
+    env = {
+        **os.environ,
+        "PORT": str(port),
+        "AI201_CORPUS": os.getenv("AI201_CORPUS", "city_guides"),
+        "AI201_CACHE": "0",
+    }
     env.update(env_extra or {})
     proc = subprocess.Popen(
         [sys.executable, str(Path(__file__).resolve()), "--_serve", fault],
